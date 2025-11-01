@@ -10,13 +10,22 @@ interface Reservation {
   duration: number;
   parentName: string;
   childName: string;
+  age: number;
+  ageMonths?: number;
   customerId: string;
+  phoneNumber?: string;
+  address?: string;
+  lineUrl?: string;
   moldCount: number;
   paymentStatus: 'paid' | 'unpaid' | 'pending';
-  progressStatus: 'waiting' | 'in-progress' | 'completed';
+  reservationStatus: 'standby' | 'confirmed';
   location: string;
   staffInCharge: string;
   note: string;
+  engravingName?: string;
+  engravingDate?: string;
+  fontStyle?: 'mincho' | 'gothic' | 'cursive';
+  deliveryStatus?: 'pending' | 'shipped' | 'completed';
   createdBy: string;
   createdAt: string;
 }
@@ -41,6 +50,25 @@ const PAYMENT_STATUS_LABELS = {
   paid: '支払済',
   unpaid: '未決済',
   pending: '保留',
+};
+
+const RESERVATION_STATUS_COLORS = {
+  standby: 'bg-orange-100 text-orange-800 border-orange-300',
+  confirmed: 'bg-blue-100 text-blue-800 border-blue-300',
+};
+
+const RESERVATION_STATUS_LABELS = {
+  standby: '仮予約(スタンバイ)',
+  confirmed: '予約確定',
+};
+
+// ヒートマップの色を計算（一日8件を基準）
+const getHeatmapColor = (count: number) => {
+  if (count === 0) return '';
+  if (count <= 3) return 'bg-green-50 border-green-200';
+  if (count <= 5) return 'bg-yellow-50 border-yellow-300';
+  if (count <= 8) return 'bg-orange-50 border-orange-300';
+  return 'bg-red-100 border-red-400'; // 8件超え
 };
 
 export function CalendarView({ reservations, locations, staff, onReservationChange, onUpdateReservation, onRefreshMasters }: CalendarViewProps) {
@@ -92,14 +120,22 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
 
   const days = getDaysInMonth();
 
+  // 日付をJST（日本時間）でフォーマット
+  const formatDateJST = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getReservationsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatDateJST(date);
     return reservations.filter(r => r.date === dateStr);
   };
 
   const isSameDay = (date1: Date | null, date2: Date | null) => {
     if (!date1 || !date2) return false;
-    return date1.toISOString().split('T')[0] === date2.toISOString().split('T')[0];
+    return formatDateJST(date1) === formatDateJST(date2);
   };
 
   const isToday = (date: Date) => {
@@ -132,7 +168,7 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
   const selectedDateReservations = useMemo(() => {
     if (!selectedDate) return [];
 
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = formatDateJST(selectedDate);
     const dayReservations = (searchQuery ? filteredReservations : reservations)
       .filter(r => r.date === dateStr);
 
@@ -157,9 +193,9 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
 
   return (
     <div className="h-full flex flex-col">
-      {/* ヘッダー: 検索バー */}
+      {/* ヘッダー: 検索バーと新規予約ボタン */}
       <div className="p-4 border-b bg-white">
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -178,46 +214,59 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
               </button>
             )}
           </div>
+          <button
+            onClick={() => {
+              if (!selectedDate) {
+                const today = new Date();
+                setSelectedDate(today);
+              }
+              setShowAddDialog(true);
+            }}
+            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-md hover:shadow-lg whitespace-nowrap"
+          >
+            <Plus className="w-5 h-5" />
+            <span>新規予約</span>
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto p-4">
-          {/* カレンダーヘッダー */}
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+          {/* 左カラム: カレンダー */}
+          <div className="bg-white rounded-lg shadow-lg p-4 h-full overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={goToPrevMonth}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <ChevronLeft className="w-4 h-4" />
                 </button>
                 <h2 className="text-gray-900">
                   {year}年 {month + 1}月
                 </h2>
                 <button
                   onClick={goToNextMonth}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
 
               <button
                 onClick={goToToday}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
               >
                 今日
               </button>
             </div>
 
             {/* 曜日ヘッダー */}
-            <div className="grid grid-cols-7 gap-2 mb-2">
+            <div className="grid grid-cols-7 gap-1 mb-1">
               {WEEKDAYS.map((day, i) => (
                 <div
                   key={i}
-                  className={`text-center py-2 ${
+                  className={`text-center py-1 text-sm ${
                     i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : 'text-gray-700'
                   }`}
                 >
@@ -227,7 +276,7 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
             </div>
 
             {/* カレンダーグリッド */}
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-1">
               {days.map((date, i) => {
                 if (!date) {
                   return <div key={i} className="aspect-square" />;
@@ -237,24 +286,27 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
                 const isSelected = isSameDay(date, selectedDate);
                 const isTodayDate = isToday(date);
                 const isTueWed = isTuesdayOrWednesday(date);
+                const heatmapColor = getHeatmapColor(dayReservations.length);
 
                 return (
                   <button
                     key={i}
                     onClick={() => setSelectedDate(date)}
-                    className={`aspect-square p-2 rounded-lg border transition-all ${
+                    className={`aspect-square p-1 rounded-lg border-2 transition-all ${
                       isSelected
-                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg'
                         : isTodayDate
                         ? 'bg-indigo-50 border-indigo-300'
                         : isTueWed
                         ? 'bg-amber-50 border-gray-200'
+                        : heatmapColor
+                        ? heatmapColor
                         : 'bg-white border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className="flex flex-col h-full">
+                    <div className="flex flex-col h-full justify-between items-center">
                       <span
-                        className={`${
+                        className={`text-sm ${
                           date.getDay() === 0
                             ? isSelected
                               ? 'text-pink-200'
@@ -272,8 +324,14 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
                       </span>
                       {dayReservations.length > 0 && (
                         <span
-                          className={`mt-auto rounded-full px-2 py-0.5 ${
-                            isSelected ? 'bg-white text-indigo-600' : 'bg-indigo-100 text-indigo-800'
+                          className={`rounded-full px-1.5 py-0.5 text-xs ${
+                            isSelected 
+                              ? 'bg-white text-indigo-600' 
+                              : dayReservations.length > 8
+                              ? 'bg-red-600 text-white ring-2 ring-red-300'
+                              : dayReservations.length > 5
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-indigo-600 text-white'
                           }`}
                         >
                           {dayReservations.length}
@@ -286,18 +344,31 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
             </div>
           </div>
 
-          {/* 選択日の予約リスト */}
-          {selectedDate && (
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-900">
-                  {selectedDate.getMonth() + 1}月{selectedDate.getDate()}日の予約
-                  {selectedDateReservations.length > 0 && ` (${selectedDateReservations.length}件)`}
-                </h3>
-                <div className="flex gap-2">
+          {/* 右カラム: 選択日の予約リスト */}
+          <div className="bg-white rounded-lg shadow-lg p-4 h-full overflow-auto">
+            {!selectedDate ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <p className="text-gray-500 mb-4">カレンダーから日付を選択してください</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-4 pb-3 border-b">
+                  <div>
+                    <h3 className="text-gray-900 mb-1">
+                      {selectedDate.getMonth() + 1}月{selectedDate.getDate()}日の予約
+                      {selectedDateReservations.length > 0 && ` (${selectedDateReservations.length}件)`}
+                    </h3>
+                    {selectedDateReservations.length > 8 && (
+                      <p className="text-orange-600 flex items-center gap-1 text-sm">
+                        ⚠️ 8件を超えています
+                      </p>
+                    )}
+                  </div>
                   <button
                     onClick={() => setIsEditMode(!isEditMode)}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 text-sm ${
                       isEditMode
                         ? 'bg-green-600 hover:bg-green-700 text-white'
                         : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
@@ -306,101 +377,97 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
                     {isEditMode ? <Check className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                     {isEditMode ? '完了' : '編集'}
                   </button>
-                  <button
-                    onClick={() => setShowAddDialog(true)}
-                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg hover:shadow-xl"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span>新規予約追加</span>
-                  </button>
                 </div>
-              </div>
 
-              <div className="space-y-3">
                 {selectedDateReservations.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">予約がありません</p>
                 ) : (
-                  selectedDateReservations.map((reservation) => (
-                    <div
-                      key={reservation.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => !isEditMode && setDetailReservation(reservation)}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-gray-900">
+                  <div className="space-y-3">
+                    {selectedDateReservations.map((reservation) => (
+                      <div
+                        key={reservation.id}
+                        className="border-2 rounded-lg p-3 hover:shadow-md transition-all cursor-pointer"
+                        style={{
+                          borderColor: reservation.reservationStatus === 'confirmed' ? '#93c5fd' : '#fdba74'
+                        }}
+                        onClick={() => !isEditMode && setDetailReservation(reservation)}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-1.5 flex-wrap text-sm">
+                            <span className="px-2 py-1 bg-gray-100 rounded">
                               {reservation.timeSlot}
                             </span>
-                            <span className="text-gray-500">
-                              ({reservation.duration}分)
-                            </span>
-                            {isEditMode && (
+                            {isEditMode ? (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleTogglePaymentStatus(reservation);
                                 }}
-                                className={`px-2 py-1 rounded ${PAYMENT_STATUS_COLORS[reservation.paymentStatus]}`}
+                                className={`px-2 py-1 rounded text-xs ${PAYMENT_STATUS_COLORS[reservation.paymentStatus]}`}
                               >
                                 {PAYMENT_STATUS_LABELS[reservation.paymentStatus]}
                               </button>
-                            )}
-                            {!isEditMode && (
-                              <span className={`px-2 py-1 rounded ${PAYMENT_STATUS_COLORS[reservation.paymentStatus]}`}>
+                            ) : (
+                              <span className={`px-2 py-1 rounded text-xs ${PAYMENT_STATUS_COLORS[reservation.paymentStatus]}`}>
                                 {PAYMENT_STATUS_LABELS[reservation.paymentStatus]}
                               </span>
                             )}
-                            {reservation.progressStatus === 'waiting' && (
-                              <span className="px-2 py-1 rounded bg-orange-100 text-orange-800">
-                                待機中
-                              </span>
-                            )}
+                            <span className={`px-2 py-1 rounded border-2 text-xs ${RESERVATION_STATUS_COLORS[reservation.reservationStatus]}`}>
+                              {RESERVATION_STATUS_LABELS[reservation.reservationStatus]}
+                            </span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-gray-700">
+                          {isEditMode && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingReservation(reservation);
+                              }}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors text-xs whitespace-nowrap"
+                            >
+                              編集
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-1 text-sm">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                             <div>
-                              <span className="text-gray-500">親:</span> {reservation.parentName}
+                              <span className="text-gray-500">親:</span> <span className="text-gray-900">{reservation.parentName}</span>
                             </div>
                             <div>
-                              <span className="text-gray-500">子:</span> {reservation.childName}
+                              <span className="text-gray-500">子:</span> <span className="text-gray-900">{reservation.childName}</span>
                             </div>
                             <div>
-                              <span className="text-gray-500">顧客番号:</span> {reservation.customerId}
+                              <span className="text-gray-500">年齢:</span> <span className="text-gray-900">
+                                {reservation.age}歳{reservation.age === 0 && reservation.ageMonths ? `(${reservation.ageMonths}ヶ月)` : ''}
+                              </span>
                             </div>
                             <div>
-                              <span className="text-gray-500">型取り:</span> {reservation.moldCount}本
+                              <span className="text-gray-500">型取り:</span> <span className="text-gray-900">{reservation.moldCount}本</span>
+                            </div>
+                            <div className="col-span-2 text-xs text-gray-600">
+                              {reservation.customerId}
                             </div>
                             <div>
-                              <span className="text-gray-500">拠点:</span> {reservation.location}
+                              <span className="text-gray-500">拠点:</span> <span className="text-gray-900">{reservation.location}</span>
                             </div>
                             <div>
-                              <span className="text-gray-500">担当:</span> {reservation.staffInCharge}
+                              <span className="text-gray-500">担当:</span> <span className="text-gray-900">{reservation.staffInCharge || 'なし'}</span>
                             </div>
                           </div>
                           {reservation.note && (
-                            <div className="mt-2 text-gray-600">
-                              <span className="text-gray-500">備考:</span> {reservation.note}
+                            <div className="pt-1 border-t text-xs">
+                              <span className="text-gray-500">備考:</span> <span className="text-gray-700">{reservation.note}</span>
                             </div>
                           )}
                         </div>
-                        {isEditMode && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingReservation(reservation);
-                            }}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                          >
-                            編集
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 

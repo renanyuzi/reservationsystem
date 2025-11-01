@@ -6,8 +6,9 @@ import { IncentiveView } from './components/IncentiveView';
 import { StaffManagement } from './components/StaffManagement';
 import { CustomerManagement } from './components/CustomerManagement';
 import { SettingsView } from './components/SettingsView';
+import { DeliveryView } from './components/DeliveryView';
 import { api } from './utils/api';
-import { Calendar, BarChart3, TrendingUp, Users, Settings, LogOut, Loader2, UserCircle } from 'lucide-react';
+import { Calendar, BarChart3, TrendingUp, Users, Settings, LogOut, Loader2, UserCircle, Package } from 'lucide-react';
 
 interface User {
   name: string;
@@ -22,18 +23,27 @@ interface Reservation {
   duration: number;
   parentName: string;
   childName: string;
+  age: number;
+  ageMonths?: number;
   customerId: string;
+  phoneNumber?: string;
+  address?: string;
+  lineUrl?: string;
   moldCount: number;
   paymentStatus: 'paid' | 'unpaid' | 'pending';
-  progressStatus: 'waiting' | 'in-progress' | 'completed';
+  reservationStatus: 'standby' | 'confirmed';
   location: string;
   staffInCharge: string;
   note: string;
+  engravingName?: string;
+  engravingDate?: string;
+  fontStyle?: 'mincho' | 'gothic' | 'cursive';
+  deliveryStatus?: 'pending' | 'shipped' | 'completed';
   createdBy: string;
   createdAt: string;
 }
 
-type View = 'calendar' | 'statistics' | 'incentive' | 'staff-management' | 'customer-management' | 'settings';
+type View = 'calendar' | 'statistics' | 'incentive' | 'staff-management' | 'customer-management' | 'settings' | 'delivery';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -178,20 +188,32 @@ export default function App() {
                       <Users className="w-4 h-4" />
                       <span className="hidden sm:inline">スタッフ</span>
                     </button>
-
-                    <button
-                      onClick={() => setCurrentView('customer-management')}
-                      className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                        currentView === 'customer-management'
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      <UserCircle className="w-4 h-4" />
-                      <span className="hidden sm:inline">顧客</span>
-                    </button>
                   </>
                 )}
+
+                <button
+                  onClick={() => setCurrentView('delivery')}
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    currentView === 'delivery'
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  <span className="hidden sm:inline">納期</span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentView('customer-management')}
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    currentView === 'customer-management'
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <UserCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">顧客</span>
+                </button>
 
                 <button
                   onClick={() => setCurrentView('settings')}
@@ -254,6 +276,16 @@ export default function App() {
             )}
 
             {currentView === 'staff-management' && isAdmin && <StaffManagement />}
+
+            {currentView === 'delivery' && (
+              <DeliveryView 
+                reservations={reservations}
+                onUpdateDeliveryStatus={async (id, status) => {
+                  await handleUpdateReservation(id, { deliveryStatus: status });
+                  await handleReservationChange();
+                }}
+              />
+            )}
 
             {currentView === 'customer-management' && isAdmin && <CustomerManagement />}
 

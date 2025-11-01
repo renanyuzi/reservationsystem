@@ -76,10 +76,10 @@ app.post('/make-server-6f5ce90a/login', async (c) => {
 app.get('/make-server-6f5ce90a/users', async (c) => {
   try {
     const usersData = await kv.getByPrefix('users:');
-    const users = usersData.map(({ value }) => ({
-      name: value.name,
-      staffId: value.staffId,
-      role: value.role
+    const users = usersData.map((user) => ({
+      name: user.name,
+      staffId: user.staffId,
+      role: user.role
     }));
     
     return c.json({ success: true, users });
@@ -211,7 +211,7 @@ app.put('/make-server-6f5ce90a/profile', async (c) => {
 app.get('/make-server-6f5ce90a/reservations', async (c) => {
   try {
     const reservationsData = await kv.getByPrefix('reservations:');
-    const reservations = reservationsData.map(({ value }) => value);
+    const reservations = reservationsData;
     
     return c.json({ success: true, reservations });
   } catch (error) {
@@ -234,6 +234,17 @@ app.post('/make-server-6f5ce90a/reservations', async (c) => {
     
     await kv.set(`reservations:${id}`, reservation);
     
+    // インセンティブの計上（予約件数 x ¥1,000）
+    if (data.staffInCharge && data.date) {
+      const incentiveKey = `incentive:${data.staffInCharge}:${data.date}`;
+      const existingIncentive = await kv.get(incentiveKey) || { staff: data.staffInCharge, date: data.date, count: 0, amount: 0 };
+      
+      existingIncentive.count += 1;
+      existingIncentive.amount += 1000;
+      
+      await kv.set(incentiveKey, existingIncentive);
+    }
+    
     return c.json({ success: true, reservation });
   } catch (error) {
     console.log(`Error creating reservation: ${error}`);
@@ -250,6 +261,41 @@ app.put('/make-server-6f5ce90a/reservations/:id', async (c) => {
     const existing = await kv.get(`reservations:${id}`);
     if (!existing) {
       return c.json({ success: false, error: '予約が見つかりません' }, 404);
+    }
+    
+    // インセンティブの再計算（担当者や日付が変更された場合）
+    const oldStaff = existing.staffInCharge;
+    const oldDate = existing.date;
+    const newStaff = data.staffInCharge || oldStaff;
+    const newDate = data.date || oldDate;
+    
+    // 担当者または日付が変更された場合のみインセンティブを再計算
+    if (oldStaff !== newStaff || oldDate !== newDate) {
+      // 古いインセンティブを減算
+      if (oldStaff && oldDate) {
+        const oldIncentiveKey = `incentive:${oldStaff}:${oldDate}`;
+        const oldIncentive = await kv.get(oldIncentiveKey);
+        if (oldIncentive) {
+          oldIncentive.count -= 1;
+          oldIncentive.amount -= 1000;
+          if (oldIncentive.count <= 0) {
+            await kv.del(oldIncentiveKey);
+          } else {
+            await kv.set(oldIncentiveKey, oldIncentive);
+          }
+        }
+      }
+      
+      // 新しいインセンティブを加算
+      if (newStaff && newDate) {
+        const newIncentiveKey = `incentive:${newStaff}:${newDate}`;
+        const newIncentive = await kv.get(newIncentiveKey) || { staff: newStaff, date: newDate, count: 0, amount: 0 };
+        
+        newIncentive.count += 1;
+        newIncentive.amount += 1000;
+        
+        await kv.set(newIncentiveKey, newIncentive);
+      }
     }
     
     const reservation = {
@@ -271,6 +317,23 @@ app.put('/make-server-6f5ce90a/reservations/:id', async (c) => {
 app.delete('/make-server-6f5ce90a/reservations/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existing = await kv.get(`reservations:${id}`);
+    
+    // インセンティブを減算（予約件数 x ¥1,000）
+    if (existing && existing.staffInCharge && existing.date) {
+      const incentiveKey = `incentive:${existing.staffInCharge}:${existing.date}`;
+      const incentive = await kv.get(incentiveKey);
+      if (incentive) {
+        incentive.count -= 1;
+        incentive.amount -= 1000;
+        if (incentive.count <= 0) {
+          await kv.del(incentiveKey);
+        } else {
+          await kv.set(incentiveKey, incentive);
+        }
+      }
+    }
+    
     await kv.del(`reservations:${id}`);
     return c.json({ success: true });
   } catch (error) {
@@ -377,7 +440,7 @@ app.delete('/make-server-6f5ce90a/staff/:name', async (c) => {
 app.get('/make-server-6f5ce90a/customers', async (c) => {
   try {
     const customersData = await kv.getByPrefix('customers:');
-    const customers = customersData.map(({ value }) => value);
+    const customers = customersData;
     
     return c.json({ success: true, customers });
   } catch (error) {
@@ -390,7 +453,12 @@ app.get('/make-server-6f5ce90a/customers', async (c) => {
 app.post('/make-server-6f5ce90a/customers', async (c) => {
   try {
     const data = await c.req.json();
-    const id = data.customerId;
+    let id = data.customerId;
+    
+    // 顧客IDが空の場合は自動生成
+    if (!id || id.trim() === '') {
+      id = `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    }
     
     // 既存チェック
     const existing = await kv.get(`customers:${id}`);
@@ -400,7 +468,16 @@ app.post('/make-server-6f5ce90a/customers', async (c) => {
     
     const customer = {
       customerId: id,
-      ...data,
+      parentName: data.parentName || '',
+      childName: data.childName || '',
+      age: data.age || 0,
+      ageMonths: data.ageMonths || 0,
+      phoneNumber: data.phoneNumber || '',
+      address: data.address || '',
+      lineUrl: data.lineUrl || '',
+      note: data.note || '',
+      paymentStatus: data.paymentStatus || 'unpaid',
+      reservationStatus: data.reservationStatus || 'none',
       createdAt: new Date().toISOString()
     };
     
@@ -426,7 +503,16 @@ app.put('/make-server-6f5ce90a/customers/:id', async (c) => {
     
     const customer = {
       ...existing,
-      ...data,
+      parentName: data.parentName !== undefined ? data.parentName : existing.parentName,
+      childName: data.childName !== undefined ? data.childName : existing.childName,
+      age: data.age !== undefined ? data.age : existing.age,
+      ageMonths: data.ageMonths !== undefined ? data.ageMonths : existing.ageMonths,
+      phoneNumber: data.phoneNumber !== undefined ? data.phoneNumber : existing.phoneNumber,
+      address: data.address !== undefined ? data.address : existing.address,
+      lineUrl: data.lineUrl !== undefined ? data.lineUrl : existing.lineUrl,
+      note: data.note !== undefined ? data.note : existing.note,
+      paymentStatus: data.paymentStatus !== undefined ? data.paymentStatus : existing.paymentStatus,
+      reservationStatus: data.reservationStatus !== undefined ? data.reservationStatus : existing.reservationStatus,
       customerId: id,
       updatedAt: new Date().toISOString()
     };

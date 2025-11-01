@@ -6,7 +6,10 @@ interface Customer {
   customerId: string;
   parentName: string;
   childName: string;
+  age?: number;
+  ageMonths?: number;
   phoneNumber: string;
+  address?: string;
   lineUrl: string;
   paymentStatus: 'paid' | 'unpaid' | 'pending';
   reservationStatus: 'standby' | 'confirmed' | 'none';
@@ -145,6 +148,7 @@ export function CustomerManagement() {
                   <th className="px-6 py-3 text-left text-gray-700">顧客ID</th>
                   <th className="px-6 py-3 text-left text-gray-700">親名</th>
                   <th className="px-6 py-3 text-left text-gray-700">子名</th>
+                  <th className="px-6 py-3 text-left text-gray-700">年齢</th>
                   <th className="px-6 py-3 text-left text-gray-700">電話番号</th>
                   <th className="px-6 py-3 text-left text-gray-700">決済状況</th>
                   <th className="px-6 py-3 text-left text-gray-700">予約状況</th>
@@ -152,47 +156,56 @@ export function CustomerManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredCustomers.map((customer) => (
-                  <tr key={customer.customerId} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-gray-900">{customer.customerId}</td>
-                    <td className="px-6 py-4 text-gray-900">{customer.parentName}</td>
-                    <td className="px-6 py-4 text-gray-900">{customer.childName}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-900">{customer.phoneNumber || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded ${PAYMENT_STATUS_COLORS[customer.paymentStatus]}`}>
-                        {PAYMENT_STATUS_LABELS[customer.paymentStatus]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded ${RESERVATION_STATUS_COLORS[customer.reservationStatus]}`}>
-                        {RESERVATION_STATUS_LABELS[customer.reservationStatus]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEdit(customer)}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-1"
-                        >
-                          <Edit className="w-4 h-4" />
-                          編集
-                        </button>
-                        <button
-                          onClick={() => handleDelete(customer)}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors flex items-center gap-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          削除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredCustomers.map((customer) => {
+                  const ageDisplay = customer.age || customer.ageMonths
+                    ? customer.age && customer.age > 0
+                      ? `${customer.age}歳`
+                      : `${customer.ageMonths || 0}ヶ月`
+                    : '-';
+                  
+                  return (
+                    <tr key={customer.customerId} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-gray-900">{customer.customerId}</td>
+                      <td className="px-6 py-4 text-gray-900">{customer.parentName}</td>
+                      <td className="px-6 py-4 text-gray-900">{customer.childName}</td>
+                      <td className="px-6 py-4 text-gray-900">{ageDisplay}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-400" />
+                          <span className="text-gray-900">{customer.phoneNumber || '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded ${PAYMENT_STATUS_COLORS[customer.paymentStatus]}`}>
+                          {PAYMENT_STATUS_LABELS[customer.paymentStatus]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded ${RESERVATION_STATUS_COLORS[customer.reservationStatus]}`}>
+                          {RESERVATION_STATUS_LABELS[customer.reservationStatus]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEdit(customer)}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-1"
+                          >
+                            <Edit className="w-4 h-4" />
+                            編集
+                          </button>
+                          <button
+                            onClick={() => handleDelete(customer)}
+                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors flex items-center gap-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            削除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -233,7 +246,10 @@ function CustomerDialog({ customer, onClose, onSuccess }: CustomerDialogProps) {
     customerId: customer?.customerId || '',
     parentName: customer?.parentName || '',
     childName: customer?.childName || '',
+    age: customer?.age || 0,
+    ageMonths: customer?.ageMonths || 0,
     phoneNumber: customer?.phoneNumber || '',
+    address: customer?.address || '',
     lineUrl: customer?.lineUrl || '',
     paymentStatus: customer?.paymentStatus || 'unpaid' as const,
     reservationStatus: customer?.reservationStatus || 'none' as const,
@@ -328,6 +344,39 @@ function CustomerDialog({ customer, onClose, onSuccess }: CustomerDialogProps) {
             </div>
 
             <div>
+              <label className="block text-gray-700 mb-2">年齢</label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    value={formData.age}
+                    onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    min="0"
+                    placeholder="0"
+                  />
+                </div>
+                <span className="flex items-center text-gray-600">歳</span>
+                {formData.age === 0 && (
+                  <>
+                    <div className="flex-1">
+                      <input
+                        type="number"
+                        value={formData.ageMonths}
+                        onChange={(e) => setFormData({ ...formData, ageMonths: parseInt(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        min="0"
+                        max="11"
+                        placeholder="0"
+                      />
+                    </div>
+                    <span className="flex items-center text-gray-600">ヶ月</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div>
               <label className="block text-gray-700 mb-2 flex items-center gap-2">
                 <Phone className="w-4 h-4" />
                 電話番号
@@ -338,6 +387,17 @@ function CustomerDialog({ customer, onClose, onSuccess }: CustomerDialogProps) {
                 onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="090-1234-5678"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-gray-700 mb-2">住所</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                placeholder="東京都渋谷区..."
               />
             </div>
 

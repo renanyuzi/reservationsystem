@@ -9,13 +9,22 @@ interface Reservation {
   duration: number;
   parentName: string;
   childName: string;
+  age: number;
+  ageMonths?: number;
   customerId: string;
+  phoneNumber?: string;
+  address?: string;
+  lineUrl?: string;
   moldCount: number;
   paymentStatus: 'paid' | 'unpaid' | 'pending';
-  progressStatus: 'waiting' | 'in-progress' | 'completed';
+  reservationStatus: 'standby' | 'confirmed';
   location: string;
   staffInCharge: string;
   note: string;
+  engravingName?: string;
+  engravingDate?: string;
+  fontStyle?: 'mincho' | 'gothic' | 'cursive';
+  deliveryStatus?: 'pending' | 'shipped' | 'completed';
   createdBy: string;
   createdAt: string;
 }
@@ -38,6 +47,16 @@ const PAYMENT_STATUS_LABELS = {
   paid: '支払済',
   unpaid: '未決済',
   pending: '保留',
+};
+
+const RESERVATION_STATUS_COLORS = {
+  standby: 'bg-orange-100 text-orange-800 border-orange-300',
+  confirmed: 'bg-blue-100 text-blue-800 border-blue-300',
+};
+
+const RESERVATION_STATUS_LABELS = {
+  standby: '仮予約(スタンバイ)',
+  confirmed: '予約確定',
 };
 
 export function ReservationDetailDialog({
@@ -108,9 +127,36 @@ export function ReservationDetailDialog({
                 <p className="text-gray-900">{reservation.childName}</p>
               </div>
               <div>
+                <p className="text-gray-500">年齢</p>
+                <p className="text-gray-900">
+                  {reservation.age}歳
+                  {reservation.age === 0 && reservation.ageMonths && ` (${reservation.ageMonths}ヶ月)`}
+                </p>
+              </div>
+              <div>
                 <p className="text-gray-500">顧客番号</p>
                 <p className="text-gray-900">{reservation.customerId}</p>
               </div>
+              {reservation.phoneNumber && (
+                <div>
+                  <p className="text-gray-500">電話番号</p>
+                  <p className="text-gray-900">{reservation.phoneNumber}</p>
+                </div>
+              )}
+              {reservation.address && (
+                <div className="md:col-span-2">
+                  <p className="text-gray-500">住所</p>
+                  <p className="text-gray-900">{reservation.address}</p>
+                </div>
+              )}
+              {reservation.lineUrl && (
+                <div className="md:col-span-2">
+                  <p className="text-gray-500">LINE URL</p>
+                  <a href={reservation.lineUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline break-all">
+                    {reservation.lineUrl}
+                  </a>
+                </div>
+              )}
               <div>
                 <p className="text-gray-500">型取り本数</p>
                 <p className="text-gray-900">{reservation.moldCount}本</p>
@@ -121,18 +167,47 @@ export function ReservationDetailDialog({
               </div>
               <div>
                 <p className="text-gray-500">担当スタッフ</p>
-                <p className="text-gray-900">{reservation.staffInCharge}</p>
+                <p className="text-gray-900">{reservation.staffInCharge || 'なし'}</p>
               </div>
             </div>
           </div>
 
+          {/* 刻印情報 */}
+          {(reservation.engravingName || reservation.engravingDate || reservation.fontStyle) && (
+            <div className="space-y-3 bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <h3 className="text-gray-900">刻印情報</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {reservation.engravingName && (
+                  <div>
+                    <p className="text-gray-500">刻印名</p>
+                    <p className="text-gray-900">{reservation.engravingName}</p>
+                  </div>
+                )}
+                {reservation.engravingDate && (
+                  <div>
+                    <p className="text-gray-500">刻印日付</p>
+                    <p className="text-gray-900">{reservation.engravingDate}</p>
+                  </div>
+                )}
+                {reservation.fontStyle && (
+                  <div>
+                    <p className="text-gray-500">書体</p>
+                    <p className="text-gray-900">
+                      {reservation.fontStyle === 'mincho' ? '明朝体' : reservation.fontStyle === 'gothic' ? 'ゴシック体' : '筆記体'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ステータス */}
-          <div className="space-y-3">
+          <div className="space-y-4">
             <h3 className="text-gray-900">ステータス</h3>
             
             <div>
               <p className="text-gray-500 mb-2">決済ステータス</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {(['unpaid', 'pending', 'paid'] as const).map((status) => (
                   <button
                     key={status}
@@ -151,12 +226,10 @@ export function ReservationDetailDialog({
             </div>
 
             <div>
-              <p className="text-gray-500">進行ステータス</p>
-              <p className="text-gray-900">
-                {reservation.progressStatus === 'waiting' && '待機中'}
-                {reservation.progressStatus === 'in-progress' && '進行中'}
-                {reservation.progressStatus === 'completed' && '完了'}
-              </p>
+              <p className="text-gray-500 mb-2">予約ステータス</p>
+              <span className={`inline-block px-4 py-2 rounded border-2 ${RESERVATION_STATUS_COLORS[reservation.reservationStatus]}`}>
+                {RESERVATION_STATUS_LABELS[reservation.reservationStatus]}
+              </span>
             </div>
           </div>
 
