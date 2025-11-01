@@ -113,7 +113,7 @@ export function ReservationDetailDialog({
             <div className="flex items-center gap-3">
               <h3 className="text-gray-900">日時</h3>
               <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded">
-                {reservation.date} {reservation.timeSlot} ({reservation.duration}分)
+                {reservation.date} {reservation.timeSlot || '時間未設定'} ({reservation.duration}分)
               </span>
             </div>
 

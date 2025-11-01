@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Search, X, Plus, Edit2, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X, Plus, Edit2, Check, Eye } from 'lucide-react';
 import { ReservationDialog } from './ReservationDialog';
 import { ReservationDetailDialog } from './ReservationDetailDialog';
+import { ReservationTimelineDialog } from './ReservationTimelineDialog';
 
 interface Reservation {
   id: string;
@@ -164,7 +165,7 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
     );
   }, [reservations, searchQuery]);
 
-  // 選択日の予約（時刻順）
+  // 選択日の予約（時刻順、時間未設定は最後）
   const selectedDateReservations = useMemo(() => {
     if (!selectedDate) return [];
 
@@ -173,6 +174,11 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
       .filter(r => r.date === dateStr);
 
     return dayReservations.sort((a, b) => {
+      // 時間未設定は最後に
+      if (!a.timeSlot && b.timeSlot) return 1;
+      if (a.timeSlot && !b.timeSlot) return -1;
+      if (!a.timeSlot && !b.timeSlot) return 0;
+      
       const timeA = a.timeSlot.split(':').map(Number);
       const timeB = b.timeSlot.split(':').map(Number);
       return timeA[0] * 60 + timeA[1] - (timeB[0] * 60 + timeB[1]);
@@ -395,7 +401,7 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex items-center gap-1.5 flex-wrap text-sm">
                             <span className="px-2 py-1 bg-gray-100 rounded">
-                              {reservation.timeSlot}
+                              {reservation.timeSlot || '時間未設定'}
                             </span>
                             {isEditMode ? (
                               <button

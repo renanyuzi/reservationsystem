@@ -106,7 +106,7 @@ export function ReservationDialog({
 
   const [formData, setFormData] = useState({
     date: reservation?.date || formatDateJST(selectedDate),
-    timeSlot: reservation?.timeSlot || '10:00',
+    timeSlot: reservation?.timeSlot || '',
     duration: reservation?.duration || 60,
     parentName: reservation?.parentName || '',
     childName: reservation?.childName || '',
@@ -421,13 +421,13 @@ export function ReservationDialog({
               </div>
 
               <div>
-                <label className="block text-gray-700 mb-2">時間帯 *</label>
+                <label className="block text-gray-700 mb-2">時間帯（任意）</label>
                 <select
                   value={formData.timeSlot}
                   onChange={(e) => setFormData({ ...formData, timeSlot: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                  required
                 >
+                  <option value="">未設定</option>
                   {timeSlots.map((time) => (
                     <option key={time} value={time}>
                       {time}

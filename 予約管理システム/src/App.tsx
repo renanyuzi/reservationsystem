@@ -7,8 +7,10 @@ import { StaffManagement } from './components/StaffManagement';
 import { CustomerManagement } from './components/CustomerManagement';
 import { SettingsView } from './components/SettingsView';
 import { DeliveryView } from './components/DeliveryView';
+import { DashboardView } from './components/DashboardView';
 import { api } from './utils/api';
-import { Calendar, BarChart3, TrendingUp, Users, Settings, LogOut, Loader2, UserCircle, Package } from 'lucide-react';
+import { Calendar, BarChart3, TrendingUp, Users, Settings, LogOut, Loader2, UserCircle, Package, LayoutDashboard } from 'lucide-react';
+import { Toaster } from './components/ui/sonner';
 
 interface User {
   name: string;
@@ -43,11 +45,11 @@ interface Reservation {
   createdAt: string;
 }
 
-type View = 'calendar' | 'statistics' | 'incentive' | 'staff-management' | 'customer-management' | 'settings' | 'delivery';
+type View = 'dashboard' | 'calendar' | 'statistics' | 'incentive' | 'staff-management' | 'customer-management' | 'settings' | 'delivery';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentView, setCurrentView] = useState<View>('calendar');
+  const [currentView, setCurrentView] = useState<View>('dashboard');
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [staff, setStaff] = useState<string[]>([]);
@@ -106,7 +108,7 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setCurrentView('calendar');
+    setCurrentView('dashboard');
     setReservations([]);
     setLocations([]);
     setStaff([]);
@@ -139,6 +141,18 @@ export default function App() {
             <div className="flex items-center gap-6">
               <h1 className="text-gray-900">予約管理システム</h1>
               <nav className="flex gap-2">
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    currentView === 'dashboard'
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span className="hidden sm:inline">ダッシュボード</span>
+                </button>
+
                 <button
                   onClick={() => setCurrentView('calendar')}
                   className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
@@ -256,6 +270,10 @@ export default function App() {
           </div>
         ) : (
           <>
+            {currentView === 'dashboard' && (
+              <DashboardView role={currentUser.role} userName={currentUser.name} />
+            )}
+
             {currentView === 'calendar' && (
               <CalendarView
                 reservations={reservations}
@@ -298,6 +316,7 @@ export default function App() {
           </>
         )}
       </main>
+      <Toaster />
     </div>
   );
 }

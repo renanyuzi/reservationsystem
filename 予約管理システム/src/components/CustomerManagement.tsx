@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, X, Loader2, Search, Phone, MessageCircle, User } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Loader2, Search, Phone, MessageCircle, User, History, Eye } from 'lucide-react';
 import { api } from '../utils/api';
+import { Reservation } from '../types';
 
 interface Customer {
   customerId: string;
@@ -44,10 +45,12 @@ const RESERVATION_STATUS_LABELS = {
 
 export function CustomerManagement() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCustomers();
@@ -56,9 +59,13 @@ export function CustomerManagement() {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const result = await api.getCustomers();
-      console.log('顧客データ:', result);
-      setCustomers(result.customers || []);
+      const [customerResult, reservationResult] = await Promise.all([
+        api.getCustomers(),
+        api.getReservations(),
+      ]);
+      console.log('顧客データ:', customerResult);
+      setCustomers(customerResult.customers || []);
+      setReservations(reservationResult.reservations || []);
     } catch (err) {
       console.error('顧客一覧取得エラー:', err);
       alert(`顧客一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
@@ -79,7 +86,7 @@ export function CustomerManagement() {
   };
 
   const handleDelete = async (customer: Customer) => {
-    if (!confirm(`${customer.parentName} さんの顧客情報を削除してもよろしいですか？`)) {
+    if (!confirm(`${customer.parentName} さんの顧客情報を削除してもよろしいですか���`)) {
       return;
     }
 
@@ -150,8 +157,6 @@ export function CustomerManagement() {
                   <th className="px-6 py-3 text-left text-gray-700">子名</th>
                   <th className="px-6 py-3 text-left text-gray-700">年齢</th>
                   <th className="px-6 py-3 text-left text-gray-700">電話番号</th>
-                  <th className="px-6 py-3 text-left text-gray-700">決済状況</th>
-                  <th className="px-6 py-3 text-left text-gray-700">予約状況</th>
                   <th className="px-6 py-3 text-left text-gray-700">操作</th>
                 </tr>
               </thead>
@@ -176,30 +181,27 @@ export function CustomerManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded ${PAYMENT_STATUS_COLORS[customer.paymentStatus]}`}>
-                          {PAYMENT_STATUS_LABELS[customer.paymentStatus]}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded ${RESERVATION_STATUS_COLORS[customer.reservationStatus]}`}>
-                          {RESERVATION_STATUS_LABELS[customer.reservationStatus]}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
                         <div className="flex gap-2">
+                          <button
+                            onClick={() => setViewingCustomerId(customer.customerId)}
+                            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors flex items-center gap-1"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span className="hidden lg:inline">詳細</span>
+                          </button>
                           <button
                             onClick={() => handleEdit(customer)}
                             className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-1"
                           >
                             <Edit className="w-4 h-4" />
-                            編集
+                            <span className="hidden lg:inline">編集</span>
                           </button>
                           <button
                             onClick={() => handleDelete(customer)}
                             className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors flex items-center gap-1"
                           >
                             <Trash2 className="w-4 h-4" />
-                            削除
+                            <span className="hidden lg:inline">削除</span>
                           </button>
                         </div>
                       </td>
@@ -226,6 +228,15 @@ export function CustomerManagement() {
             setShowDialog(false);
             loadCustomers();
           }}
+        />
+      )}
+
+      {viewingCustomerId && (
+        <CustomerDetailDialog
+          customerId={viewingCustomerId}
+          reservations={reservations.filter(r => r.customerId === viewingCustomerId)}
+          onClose={() => setViewingCustomerId(null)}
+          onUpdate={loadCustomers}
         />
       )}
     </div>
@@ -484,6 +495,229 @@ function CustomerDialog({ customer, onClose, onSuccess }: CustomerDialogProps) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// 顧客詳細ダイアログ
+interface CustomerDetailDialogProps {
+  customerId: string;
+  reservations: Reservation[];
+  onClose: () => void;
+  onUpdate: () => void;
+}
+
+function CustomerDetailDialog({ customerId, reservations, onClose, onUpdate }: CustomerDetailDialogProps) {
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadCustomer();
+  }, [customerId]);
+
+  const loadCustomer = async () => {
+    setLoading(true);
+    try {
+      const result = await api.getCustomers();
+      const c = result.customers.find((cust: Customer) => cust.customerId === customerId);
+      setCustomer(c || null);
+    } catch (err) {
+      console.error('顧客取得エラー:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading || !customer) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-8">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        </div>
+      </div>
+    );
+  }
+
+  const sortedReservations = [...reservations].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+        <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 p-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-white text-2xl mb-1">顧客360°ビュー</h2>
+            <p className="text-purple-100 text-sm">{customer.parentName}様</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 顧客基本情報 */}
+            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+              <h3 className="text-gray-900 mb-4 flex items-center gap-2">
+                <User className="w-5 h-5 text-gray-700" />
+                基本情報
+              </h3>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">顧客番号</p>
+                    <p className="text-gray-900 font-mono">{customer.customerId}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">年齢</p>
+                    <p className="text-gray-900">
+                      {customer.age && customer.age > 0 ? `${customer.age}歳` : `${customer.ageMonths || 0}ヶ月`}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">親御さん</p>
+                  <p className="text-gray-900">{customer.parentName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">お子さま</p>
+                  <p className="text-gray-900">{customer.childName}</p>
+                </div>
+                {customer.phoneNumber && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      電話番号
+                    </p>
+                    <p className="text-gray-900">{customer.phoneNumber}</p>
+                  </div>
+                )}
+                {customer.address && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">住所</p>
+                    <p className="text-gray-900 text-sm">{customer.address}</p>
+                  </div>
+                )}
+                {customer.lineUrl && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                      <MessageCircle className="w-3 h-3" />
+                      LINE
+                    </p>
+                    <a href={customer.lineUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-sm">
+                      LINEで連絡
+                    </a>
+                  </div>
+                )}
+                {customer.note && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">備考</p>
+                    <p className="text-gray-900 text-sm whitespace-pre-wrap">{customer.note}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ステータス */}
+            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+              <h3 className="text-gray-900 mb-4">ステータス</h3>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">決済状況</p>
+                  <div className={`px-3 py-2 rounded-lg text-center ${
+                    customer.paymentStatus === 'paid' ? 'bg-green-50 text-green-700 border border-green-200' :
+                    customer.paymentStatus === 'pending' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                    'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    {PAYMENT_STATUS_LABELS[customer.paymentStatus]}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">予約状況</p>
+                  <div className={`px-3 py-2 rounded-lg text-center ${
+                    customer.reservationStatus === 'confirmed' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                    customer.reservationStatus === 'standby' ? 'bg-orange-50 text-orange-700 border border-orange-200' :
+                    'bg-gray-50 text-gray-700 border border-gray-200'
+                  }`}>
+                    {RESERVATION_STATUS_LABELS[customer.reservationStatus]}
+                  </div>
+                </div>
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-gray-500 mb-2">予約統計</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">総予約数</p>
+                      <p className="text-2xl text-blue-600">{reservations.length}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">完了数</p>
+                      <p className="text-2xl text-green-600">
+                        {reservations.filter(r => r.deliveryStatus === 'completed').length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 予約履歴 */}
+          <div className="mt-6 bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+            <h3 className="text-gray-900 mb-4 flex items-center gap-2">
+              <History className="w-5 h-5 text-gray-700" />
+              予約履歴（{reservations.length}件）
+            </h3>
+            {sortedReservations.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">予約履歴がありません</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-auto">
+                {sortedReservations.map((res) => (
+                  <div key={res.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="text-gray-900 font-medium">{res.date} {res.timeSlot}</p>
+                        <p className="text-sm text-gray-600">拠点: {res.location} / 担当: {res.staffInCharge}</p>
+                      </div>
+                      <div className="flex flex-col gap-1 items-end">
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          res.reservationStatus === 'confirmed' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-orange-50 text-orange-700 border border-orange-200'
+                        }`}>
+                          {res.reservationStatus === 'confirmed' ? '確定' : '仮予約'}
+                        </span>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          res.paymentStatus === 'paid' ? 'bg-green-50 text-green-700 border border-green-200' : 
+                          res.paymentStatus === 'pending' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                          'bg-red-50 text-red-700 border border-red-200'
+                        }`}>
+                          {res.paymentStatus === 'paid' ? '支払済' : res.paymentStatus === 'pending' ? '保留' : '未決済'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                      <span>型取り: {res.moldCount}件</span>
+                      <span className={`px-2 py-1 rounded ${
+                        res.deliveryStatus === 'completed' ? 'bg-green-50 text-green-700 border border-green-200' :
+                        res.deliveryStatus === 'shipped' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                        'bg-gray-100 text-gray-700 border border-gray-300'
+                      }`}>
+                        {res.deliveryStatus === 'completed' ? '納品完了' :
+                         res.deliveryStatus === 'shipped' ? '発送済' : '製作中'}
+                      </span>
+                    </div>
+                    {res.note && (
+                      <p className="text-xs text-gray-500 mt-2 border-t pt-2">備考: {res.note}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
