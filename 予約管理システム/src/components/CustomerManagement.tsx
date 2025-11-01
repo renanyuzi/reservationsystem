@@ -43,9 +43,13 @@ const RESERVATION_STATUS_LABELS = {
   none: '未予約',
 };
 
-export function CustomerManagement() {
+interface CustomerManagementProps {
+  reservations: Reservation[];
+  onDataChange?: () => void;
+}
+
+export function CustomerManagement({ reservations, onDataChange }: CustomerManagementProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -59,13 +63,9 @@ export function CustomerManagement() {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const [customerResult, reservationResult] = await Promise.all([
-        api.getCustomers(),
-        api.getReservations(),
-      ]);
+      const customerResult = await api.getCustomers();
       console.log('顧客データ:', customerResult);
       setCustomers(customerResult.customers || []);
-      setReservations(reservationResult.reservations || []);
     } catch (err) {
       console.error('顧客一覧取得エラー:', err);
       alert(`顧客一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
@@ -86,13 +86,26 @@ export function CustomerManagement() {
   };
 
   const handleDelete = async (customer: Customer) => {
-    if (!confirm(`${customer.parentName} さんの顧客情報を削除してもよろしいですか���`)) {
+    // 関連する予約を確認
+    const relatedReservations = reservations.filter(r => r.customerId === customer.customerId);
+    const incompleteReservations = relatedReservations.filter(r => r.deliveryStatus !== 'completed');
+    
+    let confirmMessage = `${customer.parentName} さんの顧客情報を削除してもよろしいですか？`;
+    
+    if (incompleteReservations.length > 0) {
+      confirmMessage = `⚠️ 警告\n\nこの顧客には未完了の予約が${incompleteReservations.length}件あります。\n削除すると予約画面で顧客名が表示されなくなります。\n\n本当に削除しますか？`;
+    } else if (relatedReservations.length > 0) {
+      confirmMessage = `この顧客には完了済みの予約が${relatedReservations.length}件あります。\n削除してもよろしいですか？`;
+    }
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
       await api.deleteCustomer(customer.customerId);
       await loadCustomers();
+      onDataChange?.(); // 親に通知してデータを再読み込み
     } catch (err) {
       console.error('顧客削除エラー:', err);
       alert(`顧客の削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
@@ -227,6 +240,7 @@ export function CustomerManagement() {
           onSuccess={() => {
             setShowDialog(false);
             loadCustomers();
+            onDataChange?.(); // 親に通知
           }}
         />
       )}

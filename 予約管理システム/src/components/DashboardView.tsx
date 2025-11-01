@@ -17,7 +17,15 @@ export function DashboardView({ role, userName, reservations, onNavigate, onRese
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
 
-  const today = new Date().toISOString().split('T')[0];
+  // 日付をJST（日本時間）でフォーマット
+  const formatDateJST = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const today = formatDateJST(new Date());
   const todayReservations = reservations.filter(r => r.date === today);
 
   // やるべきことリスト
@@ -228,7 +236,7 @@ export function DashboardView({ role, userName, reservations, onNavigate, onRese
                 await api.deleteReservation(selectedReservation.id);
                 setShowDetailDialog(false);
                 setSelectedReservation(null);
-                loadData(); // データを再読み込み
+                onReservationChange?.(); // データを再読み込み
               } catch (error) {
                 console.error('削除エラー:', error);
                 alert('予約の削除に失敗しました');
@@ -237,7 +245,7 @@ export function DashboardView({ role, userName, reservations, onNavigate, onRese
             onUpdatePaymentStatus={async (id, status) => {
               try {
                 await api.updateReservation(id, { paymentStatus: status });
-                loadData(); // データを再読み込み
+                onReservationChange?.(); // データを再読み込み
               } catch (error) {
                 console.error('決済ステータス更新エラー:', error);
                 alert('決済ステータスの更新に失敗しました');

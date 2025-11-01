@@ -194,24 +194,36 @@ export function ReservationDialog({
       // 既存顧客かチェック
       const existingCustomer = customers.find(c => c.customerId === formData.customerId);
       
+      let finalCustomerId = formData.customerId;
+      
       if (formData.customerId && existingCustomer) {
         // 既存顧客を更新
         await api.updateCustomer(formData.customerId, customerData);
-      } else if (formData.customerId || formData.parentName || formData.childName) {
+      } else if (formData.parentName || formData.childName) {
         // 新規顧客を作成（顧客番号がなければ自動生成される）
         try {
-          await api.createCustomer(customerData);
+          const result = await api.createCustomer(customerData);
+          // サーバーから返された自動生成IDを取得
+          if (result.customer && result.customer.customerId) {
+            finalCustomerId = result.customer.customerId;
+            console.log('顧客作成成功:', finalCustomerId);
+          }
         } catch (err) {
           // 顧客作成エラーは警告のみ（予約は続行）
           console.warn('顧客情報の保存に失敗:', err);
         }
       }
 
-      // 予約を保存
+      // 予約を保存（自動生成された顧客IDを使用）
+      const reservationData = {
+        ...formData,
+        customerId: finalCustomerId
+      };
+      
       if (reservation) {
-        await api.updateReservation(reservation.id, formData);
+        await api.updateReservation(reservation.id, reservationData);
       } else {
-        await api.createReservation(formData);
+        await api.createReservation(reservationData);
       }
       
       onSuccess();
@@ -530,7 +542,7 @@ export function ReservationDialog({
                   value={formData.engravingName}
                   onChange={(e) => setFormData({ ...formData, engravingName: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                  placeholder="例: 花子"
+                  placeholder="例: 花���"
                 />
               </div>
 

@@ -94,6 +94,7 @@ export default function App() {
 
   const handleUpdateReservation = async (id: string, data: any) => {
     await api.updateReservation(id, data);
+    await loadData(); // 更新後にデータを再読み込み
   };
 
   const handleUserUpdate = (user: User) => {
@@ -288,7 +289,12 @@ export default function App() {
               />
             )}
 
-            {currentView === 'customer-management' && isAdmin && <CustomerManagement />}
+            {currentView === 'customer-management' && isAdmin && (
+              <CustomerManagement 
+                reservations={reservations}
+                onDataChange={handleReservationChange}
+              />
+            )}
 
             {currentView === 'settings' && (
               <SettingsView

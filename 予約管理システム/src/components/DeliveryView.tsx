@@ -40,7 +40,7 @@ function calculateDeliveryDates(moldingDate: string) {
   };
 }
 
-// 納期アラート判��
+// 納期アラート判定
 function getDeliveryAlert(moldingDate: string, status?: string, scheduledDeliveryDate?: string) {
   if (status === 'completed') return null;
   
@@ -85,12 +85,14 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'shipped' | 'completed'>('all');
 
-  // 予約を納期でソート（期限が近い順）
-  const sortedReservations = useMemo(() => {
-    let filtered = reservations.filter((r) => {
-      // 仮予約は除外
-      if (r.reservationStatus === 'standby') return false;
-      
+  // 1. まず仮予約を除外した配列を作成（すべての処理の基準）
+  const activeReservations = useMemo(() => {
+    return reservations.filter(r => r.reservationStatus === 'confirmed');
+  }, [reservations]);
+
+  // 2. 検索とステータスでフィルタリング
+  const filteredReservations = useMemo(() => {
+    return activeReservations.filter((r) => {
       const customerInfo = getCustomerInfo(r);
       const matchesSearch = 
         searchQuery === '' ||
@@ -105,12 +107,16 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
       
       return matchesSearch && matchesStatus;
     });
+  }, [activeReservations, searchQuery, filterStatus]);
 
-    return filtered.sort((a, b) => {
-      const alertA = getDeliveryAlert(a.date, a.deliveryStatus);
-      const alertB = getDeliveryAlert(b.date, b.deliveryStatus);
+  // 3. ソート（納期優先、なければ型取り日）
+  const sortedReservations = useMemo(() => {
+    return [...filteredReservations].sort((a, b) => {
+      // 納期アラートの優先度でソート
+      const alertA = getDeliveryAlert(a.date, a.deliveryStatus, a.scheduledDeliveryDate);
+      const alertB = getDeliveryAlert(b.date, b.deliveryStatus, b.scheduledDeliveryDate);
       
-      // 期限切れ -> 緊急 -> ���告 -> その他の順
+      // 期限切れ -> 緊急 -> 警告 -> その他の順
       const priorityA = alertA?.type === 'overdue' ? 0 : alertA?.type === 'urgent' ? 1 : alertA?.type === 'warning' ? 2 : 3;
       const priorityB = alertB?.type === 'overdue' ? 0 : alertB?.type === 'urgent' ? 1 : alertB?.type === 'warning' ? 2 : 3;
       
@@ -118,19 +124,23 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
         return priorityA - priorityB;
       }
       
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
+      // 同じ優先度の場合、納期でソート（納期がなければ型取り日）
+      const dateA = a.scheduledDeliveryDate || a.date;
+      const dateB = b.scheduledDeliveryDate || b.date;
+      return new Date(dateA).getTime() - new Date(dateB).getTime();
     });
-  }, [reservations, searchQuery, filterStatus]);
+  }, [filteredReservations]);
 
+  // 4. 統計を確定予約（activeReservations）から計算
   const stats = useMemo(() => {
-    const pending = reservations.filter(r => (r.deliveryStatus || 'pending') === 'pending').length;
-    const shipped = reservations.filter(r => r.deliveryStatus === 'shipped').length;
-    const overdue = reservations.filter(r => {
-      const alert = getDeliveryAlert(r.date, r.deliveryStatus);
+    const pending = activeReservations.filter(r => (r.deliveryStatus || 'pending') === 'pending').length;
+    const shipped = activeReservations.filter(r => r.deliveryStatus === 'shipped').length;
+    const overdue = activeReservations.filter(r => {
+      const alert = getDeliveryAlert(r.date, r.deliveryStatus, r.scheduledDeliveryDate);
       return alert?.type === 'overdue';
     }).length;
     return { pending, shipped, overdue };
-  }, [reservations]);
+  }, [activeReservations]);
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -179,7 +189,7 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="親名・子名・顧客番号・拠点で���索"
+              placeholder="親名・子名・顧客番号・拠点で検索"
               className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
             {searchQuery && (
