@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Trash2, Plus, Save, User as UserIcon } from 'lucide-react';
 import { Location, Staff, User } from '../types/reservation';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import * as api from '../utils/api';
 
 interface SettingsViewProps {
   locations: Location[];
@@ -89,37 +89,19 @@ export function SettingsView({
         updateData.newPassword = profileForm.newPassword;
       }
 
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/users/${currentUser.id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(updateData),
-        }
-      );
-
-      if (response.ok) {
-        setProfileMessage({ type: 'success', text: 'プロフィールを更新しました' });
-        setProfileForm({
-          ...profileForm,
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: '',
-        });
-        
-        // 親コンポーネントに通知
-        if (onUserUpdate) {
-          onUserUpdate();
-        }
-      } else {
-        const error = await response.json();
-        setProfileMessage({ 
-          type: 'error', 
-          text: error.error || 'プロフィールの更新に失敗しました' 
-        });
+      await api.updateUser(currentUser.id, updateData);
+      
+      setProfileMessage({ type: 'success', text: 'プロフィールを更新しました' });
+      setProfileForm({
+        ...profileForm,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      
+      // 親コンポーネントに通知
+      if (onUserUpdate) {
+        onUserUpdate();
       }
     } catch (error) {
       console.error('プロフィール更新エラー:', error);

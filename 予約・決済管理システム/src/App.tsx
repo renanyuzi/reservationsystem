@@ -53,17 +53,20 @@ export default function App() {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   // ログイン処理
-  const handleLogin = (user: User) => {
+  const handleLogin = (user: User, token: string) => {
     setCurrentUser(user);
-    localStorage.setItem('currentUser', JSON.stringify(user));
+    // セッションストレージに保存（タブを閉じると削除される）
+    sessionStorage.setItem('currentUser', JSON.stringify(user));
+    sessionStorage.setItem('authToken', token);
   };
 
   // ログアウト処理
   const handleLogout = () => {
     console.log('ログアウト処理開始');
     setCurrentUser(null);
-    localStorage.removeItem('currentUser');
-    // セットアップ完了フラグは維持（再セットアップ不要）
+    // セッションストレージとトークンをクリア
+    api.logout();
+    sessionStorage.removeItem('currentUser');
     
     // ビューをリセット
     setCurrentView('calendar');
@@ -83,19 +86,13 @@ export default function App() {
   useEffect(() => {
     console.log('🚀 アプリケーション初期化開始');
     
-    // 保存されたユーザー情報を読み込み
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
+    // 保存されたユーザー情報を読み込み（セッションストレージから）
+    const savedUser = sessionStorage.getItem('currentUser');
+    const savedToken = sessionStorage.getItem('authToken');
+    
+    if (savedUser && savedToken) {
       console.log('💾 ログイン情報を読み込みました');
       setCurrentUser(JSON.parse(savedUser));
-      
-      // 目標のビューを確認
-      const targetView = localStorage.getItem('targetView');
-      if (targetView) {
-        console.log(`🎯 目標ビュー: ${targetView}`);
-        setCurrentView(targetView as any);
-        localStorage.removeItem('targetView'); // 使用後は削除
-      }
     }
     
     setIsLoading(false);

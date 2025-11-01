@@ -39,23 +39,17 @@ export async function setupInitialData() {
     
     console.log('✅ セットアップ完了:', setupData);
 
-    // 3. ユーザー確認
-    console.log('\n3️⃣ ユーザー情報を確認中...');
-    const usersResponse = await fetch(`${baseUrl}/api/users`, {
-      headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-    });
-    const users = await usersResponse.json();
-    console.log('✅ 登録済みユーザー:', users);
+    // 3. ユーザー確認（ログイン後のトークンが必要なのでスキップ）
+    console.log('\n3️⃣ ユーザー確認をスキップ（認証が必要なため）');
 
     // 4. ログインテスト
     console.log('\n4️⃣ ログインテスト中...');
     const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${publicAnonKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username: 'manager', password: 'manager123' })
+      body: JSON.stringify({ username: 'manager', password: 'ChangeMe123!' })
     });
     
     const loginData = await loginResponse.json();
@@ -73,12 +67,8 @@ export async function setupInitialData() {
     console.log('─────────────────────────────');
     console.log('管理職:');
     console.log('  ID: manager');
-    console.log('  パスワード: manager123');
-    console.log('─────────────────────────────');
-    console.log('スタッフ:');
-    console.log('  ID: staff001 / パスワード: staff001');
-    console.log('  ID: staff002 / パスワード: staff002');
-    console.log('  ID: staff003 / パスワード: staff003');
+    console.log('  パスワード: ChangeMe123!');
+    console.log('  ⚠️ 初回ログイン後、必ずパスワードを変更してください');
     console.log('─────────────────────────────');
 
     return { 
@@ -86,7 +76,6 @@ export async function setupInitialData() {
       data: { 
         health: healthData,
         setup: setupData,
-        users: users,
         login: loginData
       }
     };

@@ -3,10 +3,62 @@ import { Reservation, Location, Staff } from '../types/reservation';
 
 const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-7a759794`;
 
-const headers = {
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${publicAnonKey}`,
-};
+// トークンを取得
+function getAuthToken(): string | null {
+  return sessionStorage.getItem('authToken');
+}
+
+// 認証ヘッダーを取得
+function getHeaders(): HeadersInit {
+  const token = getAuthToken();
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+// ========================================
+// 認証API
+// ========================================
+
+export async function login(username: string, password: string): Promise<{ user: any; token: string }> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Login failed');
+    }
+
+    // トークンを保存
+    if (data.token) {
+      sessionStorage.setItem('authToken', data.token);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
+  }
+}
+
+export function logout(): void {
+  sessionStorage.removeItem('authToken');
+  sessionStorage.removeItem('currentUser');
+}
 
 // ========================================
 // 予約管理API
@@ -14,8 +66,15 @@ const headers = {
 
 export async function fetchReservations(): Promise<Reservation[]> {
   try {
-    const response = await fetch(`${BASE_URL}/reservations`, { headers });
+    const response = await fetch(`${BASE_URL}/reservations`, { 
+      headers: getHeaders() 
+    });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch reservations');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to fetch reservations');
     }
@@ -26,14 +85,22 @@ export async function fetchReservations(): Promise<Reservation[]> {
   }
 }
 
+// エイリアス: 後方互換性のため
+export const getReservations = fetchReservations;
+
 export async function createReservation(reservation: Reservation): Promise<Reservation> {
   try {
     const response = await fetch(`${BASE_URL}/reservations`, {
       method: 'POST',
-      headers,
+      headers: getHeaders(),
       body: JSON.stringify({ reservation }),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create reservation');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to create reservation');
     }
@@ -48,10 +115,15 @@ export async function updateReservation(id: string, reservation: Omit<Reservatio
   try {
     const response = await fetch(`${BASE_URL}/reservations/${id}`, {
       method: 'PUT',
-      headers,
+      headers: getHeaders(),
       body: JSON.stringify({ reservation }),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update reservation');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to update reservation');
     }
@@ -66,9 +138,14 @@ export async function deleteReservation(id: string): Promise<void> {
   try {
     const response = await fetch(`${BASE_URL}/reservations/${id}`, {
       method: 'DELETE',
-      headers,
+      headers: getHeaders(),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to delete reservation');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to delete reservation');
     }
@@ -82,9 +159,14 @@ export async function togglePaymentStatus(id: string): Promise<Reservation> {
   try {
     const response = await fetch(`${BASE_URL}/reservations/${id}/payment`, {
       method: 'PATCH',
-      headers,
+      headers: getHeaders(),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to toggle payment status');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to toggle payment status');
     }
@@ -101,8 +183,15 @@ export async function togglePaymentStatus(id: string): Promise<Reservation> {
 
 export async function fetchLocations(): Promise<Location[]> {
   try {
-    const response = await fetch(`${BASE_URL}/locations`, { headers });
+    const response = await fetch(`${BASE_URL}/locations`, { 
+      headers: getHeaders() 
+    });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch locations');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to fetch locations');
     }
@@ -117,10 +206,15 @@ export async function createLocation(location: Location): Promise<Location> {
   try {
     const response = await fetch(`${BASE_URL}/locations`, {
       method: 'POST',
-      headers,
+      headers: getHeaders(),
       body: JSON.stringify({ location }),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create location');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to create location');
     }
@@ -135,9 +229,14 @@ export async function deleteLocation(id: string): Promise<void> {
   try {
     const response = await fetch(`${BASE_URL}/locations/${id}`, {
       method: 'DELETE',
-      headers,
+      headers: getHeaders(),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to delete location');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to delete location');
     }
@@ -153,8 +252,15 @@ export async function deleteLocation(id: string): Promise<void> {
 
 export async function fetchStaff(): Promise<Staff[]> {
   try {
-    const response = await fetch(`${BASE_URL}/staff`, { headers });
+    const response = await fetch(`${BASE_URL}/staff`, { 
+      headers: getHeaders() 
+    });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch staff');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to fetch staff');
     }
@@ -169,10 +275,15 @@ export async function createStaff(staff: Staff): Promise<Staff> {
   try {
     const response = await fetch(`${BASE_URL}/staff`, {
       method: 'POST',
-      headers,
+      headers: getHeaders(),
       body: JSON.stringify({ staff }),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create staff');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to create staff');
     }
@@ -187,9 +298,14 @@ export async function deleteStaff(id: string): Promise<void> {
   try {
     const response = await fetch(`${BASE_URL}/staff/${id}`, {
       method: 'DELETE',
-      headers,
+      headers: getHeaders(),
     });
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to delete staff');
+    }
+    
     if (!data.success) {
       throw new Error(data.error || 'Failed to delete staff');
     }
@@ -200,22 +316,114 @@ export async function deleteStaff(id: string): Promise<void> {
 }
 
 // ========================================
+// ユーザー管理API
+// ========================================
+
+export async function fetchUsers(): Promise<any[]> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/users`, { 
+      headers: getHeaders() 
+    });
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch users');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    throw error;
+  }
+}
+
+export async function createUser(user: any): Promise<any> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/users`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(user),
+    });
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create user');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
+  }
+}
+
+export async function updateUser(id: string, updates: any): Promise<any> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/users/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(updates),
+    });
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update user');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error updating user:', error);
+    throw error;
+  }
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/users/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to delete user');
+    }
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    throw error;
+  }
+}
+
+// ========================================
 // セットアップAPI
 // ========================================
 
 export async function setupInitialData(): Promise<void> {
   try {
+    console.log('🔧 セットアップAPIを呼び出しています...');
     const response = await fetch(`${BASE_URL}/setup`, {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
+    
     const data = await response.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to setup initial data');
+    console.log('📦 セットアップAPI応答:', data);
+    
+    if (!response.ok) {
+      console.error('❌ セットアップAPIエラー:', data);
+      throw new Error(data.error || data.details || 'Failed to setup initial data');
     }
-    console.log('Initial data setup:', data);
+    
+    if (!data.success && !data.skipped) {
+      console.error('❌ セットアップ失敗:', data);
+      throw new Error(data.error || data.details || 'Failed to setup initial data');
+    }
+    
+    console.log('✅ セットアップ完了:', data.message || 'Success');
   } catch (error) {
-    console.error('Error setting up initial data:', error);
+    console.error('❌ セットアップエラー:', error);
     throw error;
   }
 }

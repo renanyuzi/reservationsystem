@@ -6,6 +6,9 @@ import * as kv from './kv_store.tsx';
 
 const app = new Hono();
 
+// JWT Secret (本番環境では環境変数から読み込む)
+const JWT_SECRET = Deno.env.get('JWT_SECRET') || 'your-super-secret-jwt-key-change-in-production';
+
 // Middleware
 app.use('*', cors());
 app.use('*', logger(console.log));
@@ -17,11 +20,214 @@ const supabase = createClient(
 );
 
 // ========================================
-// 予約管理エンドポイント
+// シンプルなパスワードハッシュ関数（SHA-256ベース）
+// ========================================
+
+async function hashPassword(password: string): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + JWT_SECRET);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  } catch (error) {
+    console.error('Hash password error:', error);
+    throw new Error('Failed to hash password: ' + String(error));
+  }
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  try {
+    const passwordHash = await hashPassword(password);
+    return passwordHash === hash;
+  } catch (error) {
+    console.error('Verify password error:', error);
+    return false;
+  }
+}
+
+// ========================================
+// シンプルなJWT実装
+// ========================================
+
+function base64UrlEncode(data: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...data));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function base64UrlDecode(str: string): string {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) {
+    str += '=';
+  }
+  return atob(str);
+}
+
+async function createJWT(payload: any): Promise<string> {
+  try {
+    const header = { alg: 'HS256', typ: 'JWT' };
+    
+    const encoder = new TextEncoder();
+    const encodedHeader = base64UrlEncode(encoder.encode(JSON.stringify(header)));
+    const encodedPayload = base64UrlEncode(encoder.encode(JSON.stringify(payload)));
+    
+    const message = `${encodedHeader}.${encodedPayload}`;
+    const messageData = encoder.encode(message + JWT_SECRET);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', messageData);
+    const signature = base64UrlEncode(new Uint8Array(hashBuffer));
+    
+    return `${message}.${signature}`;
+  } catch (error) {
+    console.error('Create JWT error:', error);
+    throw new Error('Failed to create JWT: ' + String(error));
+  }
+}
+
+async function verifyJWT(token: string): Promise<any> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const [encodedHeader, encodedPayload, signature] = parts;
+    const message = `${encodedHeader}.${encodedPayload}`;
+    
+    const encoder = new TextEncoder();
+    const messageData = encoder.encode(message + JWT_SECRET);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', messageData);
+    const expectedSignature = base64UrlEncode(new Uint8Array(hashBuffer));
+    
+    if (signature !== expectedSignature) {
+      console.error('JWT signature mismatch');
+      return null;
+    }
+
+    const payloadJson = base64UrlDecode(encodedPayload);
+    const payload = JSON.parse(payloadJson);
+    
+    // 有効期限チェック
+    if (payload.exp && payload.exp < Date.now() / 1000) {
+      console.error('JWT expired');
+      return null;
+    }
+
+    return payload;
+  } catch (error) {
+    console.error('JWT verification error:', error);
+    return null;
+  }
+}
+
+// ========================================
+// 認証ミドルウェア
+// ========================================
+
+interface AuthContext {
+  userId: string;
+  username: string;
+  role: string;
+}
+
+// JWT検証ミドルウェア
+async function authMiddleware(c: any, next: () => Promise<void>) {
+  try {
+    const authHeader = c.req.header('Authorization');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return c.json({ error: 'Unauthorized - No token provided' }, 401);
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer '
+    
+    const payload = await verifyJWT(token);
+    
+    if (!payload) {
+      return c.json({ error: 'Unauthorized - Invalid token' }, 401);
+    }
+
+    // ユーザー情報をコンテキストに設定
+    c.set('auth', {
+      userId: payload.userId,
+      username: payload.username,
+      role: payload.role,
+    } as AuthContext);
+
+    await next();
+  } catch (error) {
+    console.error('Authentication error:', error);
+    return c.json({ error: 'Unauthorized - Authentication failed' }, 401);
+  }
+}
+
+// 管理者権限チェックミドルウェア
+async function adminOnly(c: any, next: () => Promise<void>) {
+  const auth: AuthContext = c.get('auth');
+  
+  if (auth.role !== 'manager') {
+    return c.json({ error: 'Forbidden - Admin access required' }, 403);
+  }
+  
+  await next();
+}
+
+// ========================================
+// ユーザー認証エンドポイント（認証不要）
+// ========================================
+
+// ログイン
+app.post('/make-server-7a759794/api/auth/login', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { username, password } = body;
+
+    if (!username || !password) {
+      return c.json({ error: 'Username and password are required' }, 400);
+    }
+
+    // ユーザーを取得
+    const userKey = `user:${username}`;
+    const user = await kv.get<any>(userKey);
+    
+    if (!user) {
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    // パスワード検証
+    const isPasswordValid = await verifyPassword(password, user.passwordHash);
+    
+    if (!isPasswordValid) {
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    // JWTトークンを生成（24時間有効）
+    const token = await createJWT({
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24時間
+    });
+
+    // パスワードハッシュを除外して返す
+    const { passwordHash: _, ...userWithoutPassword } = user;
+    
+    return c.json({
+      user: userWithoutPassword,
+      token,
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return c.json({ error: 'Internal server error during login: ' + String(error) }, 500);
+  }
+});
+
+// ========================================
+// 予約管理エンドポイント（認証必須）
 // ========================================
 
 // 全予約を取得
-app.get('/make-server-7a759794/reservations', async (c) => {
+app.get('/make-server-7a759794/reservations', authMiddleware, async (c) => {
   try {
     const reservations = await kv.getByPrefix('reservation:');
     return c.json({ success: true, data: reservations });
@@ -32,7 +238,7 @@ app.get('/make-server-7a759794/reservations', async (c) => {
 });
 
 // 予約を追加
-app.post('/make-server-7a759794/reservations', async (c) => {
+app.post('/make-server-7a759794/reservations', authMiddleware, async (c) => {
   try {
     const body = await c.req.json();
     const { reservation } = body;
@@ -50,7 +256,7 @@ app.post('/make-server-7a759794/reservations', async (c) => {
 });
 
 // 予約を更新
-app.put('/make-server-7a759794/reservations/:id', async (c) => {
+app.put('/make-server-7a759794/reservations/:id', authMiddleware, async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
@@ -69,7 +275,7 @@ app.put('/make-server-7a759794/reservations/:id', async (c) => {
 });
 
 // 予約を削除
-app.delete('/make-server-7a759794/reservations/:id', async (c) => {
+app.delete('/make-server-7a759794/reservations/:id', authMiddleware, async (c) => {
   try {
     const id = c.req.param('id');
     await kv.del(`reservation:${id}`);
@@ -81,7 +287,7 @@ app.delete('/make-server-7a759794/reservations/:id', async (c) => {
 });
 
 // 決済ステータスをトグル
-app.patch('/make-server-7a759794/reservations/:id/payment', async (c) => {
+app.patch('/make-server-7a759794/reservations/:id/payment', authMiddleware, async (c) => {
   try {
     const id = c.req.param('id');
     const existing = await kv.get<any>(`reservation:${id}`);
@@ -103,11 +309,11 @@ app.patch('/make-server-7a759794/reservations/:id/payment', async (c) => {
 });
 
 // ========================================
-// 拠点管理エンドポイント
+// 拠点管理エンドポイント（認証必須）
 // ========================================
 
 // 全拠点を取得
-app.get('/make-server-7a759794/locations', async (c) => {
+app.get('/make-server-7a759794/locations', authMiddleware, async (c) => {
   try {
     const locations = await kv.getByPrefix('location:');
     return c.json({ success: true, data: locations });
@@ -117,8 +323,8 @@ app.get('/make-server-7a759794/locations', async (c) => {
   }
 });
 
-// 拠点を追加
-app.post('/make-server-7a759794/locations', async (c) => {
+// 拠点を追加（管理者のみ）
+app.post('/make-server-7a759794/locations', authMiddleware, adminOnly, async (c) => {
   try {
     const body = await c.req.json();
     const { location } = body;
@@ -135,8 +341,8 @@ app.post('/make-server-7a759794/locations', async (c) => {
   }
 });
 
-// 拠点を削除
-app.delete('/make-server-7a759794/locations/:id', async (c) => {
+// 拠点を削除（管理者のみ）
+app.delete('/make-server-7a759794/locations/:id', authMiddleware, adminOnly, async (c) => {
   try {
     const id = c.req.param('id');
     await kv.del(`location:${id}`);
@@ -148,11 +354,11 @@ app.delete('/make-server-7a759794/locations/:id', async (c) => {
 });
 
 // ========================================
-// スタッフ管理エンドポイント
+// スタッフ管理エンドポイント（認証必須）
 // ========================================
 
 // 全スタッフを取得
-app.get('/make-server-7a759794/staff', async (c) => {
+app.get('/make-server-7a759794/staff', authMiddleware, async (c) => {
   try {
     const staff = await kv.getByPrefix('staff:');
     return c.json({ success: true, data: staff });
@@ -162,8 +368,8 @@ app.get('/make-server-7a759794/staff', async (c) => {
   }
 });
 
-// スタッフを追加
-app.post('/make-server-7a759794/staff', async (c) => {
+// スタッフを追加（管理者のみ）
+app.post('/make-server-7a759794/staff', authMiddleware, adminOnly, async (c) => {
   try {
     const body = await c.req.json();
     const { staff } = body;
@@ -180,8 +386,8 @@ app.post('/make-server-7a759794/staff', async (c) => {
   }
 });
 
-// スタッフを削除
-app.delete('/make-server-7a759794/staff/:id', async (c) => {
+// スタッフを削除（管理者のみ）
+app.delete('/make-server-7a759794/staff/:id', authMiddleware, adminOnly, async (c) => {
   try {
     const id = c.req.param('id');
     await kv.del(`staff:${id}`);
@@ -193,73 +399,15 @@ app.delete('/make-server-7a759794/staff/:id', async (c) => {
 });
 
 // ========================================
-// ユーザー認証・管理エンドポイント
+// ユーザー管理エンドポイント（認証必須）
 // ========================================
 
-// ログイン
-app.post('/make-server-7a759794/api/auth/login', async (c) => {
-  try {
-    const body = await c.req.json();
-    const { username, password } = body;
-
-    console.log('=== LOGIN ATTEMPT ===');
-    console.log('Username:', username);
-    console.log('Password provided:', password ? 'yes' : 'no');
-
-    if (!username || !password) {
-      console.log('ERROR: Missing credentials');
-      return c.json({ error: 'Username and password are required' }, 400);
-    }
-
-    // デバッグ: すべてのユーザーキーを確認
-    const allUsers = await kv.getByPrefix('user:');
-    console.log('All users in database:', allUsers.length);
-    console.log('User keys:', allUsers.map((u: any) => u.username));
-
-    // ユーザーを取得
-    const userKey = `user:${username}`;
-    console.log('Looking for key:', userKey);
-    const user = await kv.get<any>(userKey);
-    
-    if (!user) {
-      console.log('ERROR: User not found for key:', userKey);
-      console.log('Available users:', allUsers.map((u: any) => ({ key: `user:${u.username}`, name: u.name })));
-      return c.json({ 
-        error: 'Invalid credentials',
-        debug: {
-          attemptedKey: userKey,
-          availableUsers: allUsers.length,
-          usernames: allUsers.map((u: any) => u.username)
-        }
-      }, 401);
-    }
-
-    console.log('User found:', { username: user.username, name: user.name, role: user.role });
-
-    if (user.password !== password) {
-      console.log('ERROR: Password mismatch');
-      console.log('Expected:', user.password);
-      console.log('Received:', password);
-      return c.json({ error: 'Invalid credentials' }, 401);
-    }
-
-    // パスワードを除外して返す
-    const { password: _, ...userWithoutPassword } = user;
-    console.log('=== LOGIN SUCCESSFUL ===');
-    console.log('User:', userWithoutPassword);
-    return c.json(userWithoutPassword);
-  } catch (error) {
-    console.error('Login exception:', error);
-    return c.json({ error: String(error), stack: (error as Error).stack }, 500);
-  }
-});
-
 // 全ユーザーを取得（管理職専用）
-app.get('/make-server-7a759794/api/users', async (c) => {
+app.get('/make-server-7a759794/api/users', authMiddleware, adminOnly, async (c) => {
   try {
     const users = await kv.getByPrefix('user:');
-    // パスワードを除外
-    const usersWithoutPasswords = users.map(({ password, ...user }) => user);
+    // パスワードハッシュを除外
+    const usersWithoutPasswords = users.map(({ passwordHash, ...user }) => user);
     return c.json(usersWithoutPasswords);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -268,7 +416,7 @@ app.get('/make-server-7a759794/api/users', async (c) => {
 });
 
 // ユーザーを追加（管理職専用）
-app.post('/make-server-7a759794/api/users', async (c) => {
+app.post('/make-server-7a759794/api/users', authMiddleware, adminOnly, async (c) => {
   try {
     const body = await c.req.json();
     const { username, password, name, role, incentiveRate } = body;
@@ -277,24 +425,33 @@ app.post('/make-server-7a759794/api/users', async (c) => {
       return c.json({ error: 'Missing required fields' }, 400);
     }
 
+    // パスワードの強度チェック
+    if (password.length < 8) {
+      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+    }
+
     // ユーザーIDが既に存在するかチェック
     const existing = await kv.get(`user:${username}`);
     if (existing) {
       return c.json({ error: 'Username already exists' }, 409);
     }
 
+    // パスワードをハッシュ化
+    const passwordHash = await hashPassword(password);
+
     const user = {
       id: username,
       username,
-      password,
+      passwordHash,
       name,
       role,
       incentiveRate: role === 'staff' ? incentiveRate : undefined,
+      requirePasswordChange: true, // 初回ログイン時にパスワード変更を強制
     };
 
     await kv.set(`user:${username}`, user);
     
-    const { password: _, ...userWithoutPassword } = user;
+    const { passwordHash: _, ...userWithoutPassword } = user;
     return c.json(userWithoutPassword);
   } catch (error) {
     console.error('Error creating user:', error);
@@ -302,47 +459,62 @@ app.post('/make-server-7a759794/api/users', async (c) => {
   }
 });
 
-// ユーザーを更新
-app.put('/make-server-7a759794/api/users/:id', async (c) => {
+// ユーザーを更新（本人または管理者）
+app.put('/make-server-7a759794/api/users/:id', authMiddleware, async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
-    const { password, currentPassword, newPassword, name, role, incentiveRate } = body;
+    const { currentPassword, newPassword, name, role, incentiveRate } = body;
+    const auth: AuthContext = c.get('auth');
+
+    // 本人または管理者のみ更新可能
+    if (auth.userId !== id && auth.role !== 'manager') {
+      return c.json({ error: 'Forbidden - You can only update your own profile' }, 403);
+    }
 
     const existing = await kv.get<any>(`user:${id}`);
     if (!existing) {
       return c.json({ error: 'User not found' }, 404);
     }
 
+    let updatedPasswordHash = existing.passwordHash;
+
     // パスワード変更リクエストの場合
     if (newPassword) {
-      if (!currentPassword) {
-        return c.json({ error: '現在のパスワードが必要です' }, 400);
+      // 本人の場合は現在のパスワードを検証
+      if (auth.userId === id) {
+        if (!currentPassword) {
+          return c.json({ error: '現在のパスワードが必要です' }, 400);
+        }
+        
+        // 現在のパスワードを検証
+        const isCurrentPasswordValid = await verifyPassword(currentPassword, existing.passwordHash);
+        if (!isCurrentPasswordValid) {
+          return c.json({ error: '現在のパスワードが正しくあり���せん' }, 401);
+        }
       }
       
-      // 現在のパスワードを検証
-      if (existing.password !== currentPassword) {
-        return c.json({ error: '現在のパスワードが正しくありません' }, 401);
-      }
-      
-      // 新しいパスワードでバリデーション
+      // 新しいパスワードのバリデーション
       if (newPassword.length < 8) {
         return c.json({ error: '新しいパスワードは8文字以上で入力してください' }, 400);
       }
+
+      // 新しいパスワードをハッシュ化
+      updatedPasswordHash = await hashPassword(newPassword);
     }
 
     const updated = {
       ...existing,
-      name: name || existing.name,
-      role: role || existing.role,
-      incentiveRate: role === 'staff' ? incentiveRate : undefined,
-      // パスワード更新の優先順位: newPassword > password > 既存
-      password: newPassword || password || existing.password,
+      name: name !== undefined ? name : existing.name,
+      role: (auth.role === 'manager' && role) ? role : existing.role,
+      incentiveRate: (auth.role === 'manager' && role === 'staff') ? incentiveRate : existing.incentiveRate,
+      passwordHash: updatedPasswordHash,
+      requirePasswordChange: false, // パスワード変更後はフラグを解除
     };
 
     await kv.set(`user:${id}`, updated);
     
-    const { password: _, ...userWithoutPassword } = updated;
+    const { passwordHash: _, ...userWithoutPassword } = updated;
     return c.json(userWithoutPassword);
   } catch (error) {
     console.error('Error updating user:', error);
@@ -351,9 +523,16 @@ app.put('/make-server-7a759794/api/users/:id', async (c) => {
 });
 
 // ユーザーを削除（管理職専用）
-app.delete('/make-server-7a759794/api/users/:id', async (c) => {
+app.delete('/make-server-7a759794/api/users/:id', authMiddleware, adminOnly, async (c) => {
   try {
     const id = c.req.param('id');
+    
+    // 自分自身は削除できない
+    const auth: AuthContext = c.get('auth');
+    if (auth.userId === id) {
+      return c.json({ error: 'Cannot delete your own account' }, 400);
+    }
+    
     await kv.del(`user:${id}`);
     return c.json({ success: true });
   } catch (error) {
@@ -363,95 +542,30 @@ app.delete('/make-server-7a759794/api/users/:id', async (c) => {
 });
 
 // ========================================
-// 初期データセットアップ
+// 初期データセットアップ（認証不要 - 初回のみ）
 // ========================================
-
-// 管理職のみセットアップ（最初のセットアップ）
-app.post('/make-server-7a759794/setup-manager', async (c) => {
-  try {
-    console.log('=== MANAGER SETUP STARTED ===');
-    
-    // 管理職が既に存在するかチェック
-    const existingManager = await kv.get('user:manager');
-    
-    if (existingManager) {
-      console.log('Manager already exists:', existingManager);
-      return c.json({ 
-        success: true, 
-        message: 'Manager already exists', 
-        skipped: true,
-        manager: { username: 'manager', name: '管理者' }
-      });
-    }
-
-    // 管理職アカウントを作成
-    // セキュリティを考慮したより強力なパスワード
-    const manager = {
-      id: 'manager',
-      username: 'manager',
-      password: 'Manager@2024!Secure',
-      name: '管理者',
-      role: 'manager'
-    };
-
-    console.log('Creating manager account with data:', { ...manager, password: '***' });
-    await kv.set('user:manager', manager);
-    console.log('Manager kv.set completed');
-
-    // 書き込みを確認
-    const verification = await kv.get('user:manager');
-    console.log('Verification read:', verification ? 'SUCCESS' : 'FAILED');
-    if (verification) {
-      console.log('Verified data:', { ...verification, password: '***' });
-    }
-
-    // 基本的な拠点も作成
-    const locations = [
-      { id: '1', name: '東京本店' },
-      { id: '2', name: '横浜店' },
-      { id: '3', name: '大阪店' },
-    ];
-
-    console.log('Creating default locations...');
-    for (const location of locations) {
-      await kv.set(`location:${location.id}`, location);
-      console.log(`Created location: ${location.name}`);
-    }
-
-    console.log('=== MANAGER SETUP COMPLETED ===');
-
-    return c.json({
-      success: true,
-      message: 'Manager account created successfully',
-      data: {
-        username: 'manager',
-        password: 'manager123',
-        name: '管理者',
-        role: 'manager'
-      },
-      locations: locations.length,
-      verified: !!verification
-    });
-  } catch (error) {
-    console.error('Manager setup error:', error);
-    console.error('Error stack:', (error as Error).stack);
-    return c.json({ success: false, error: String(error), stack: (error as Error).stack }, 500);
-  }
-});
 
 // 初期データを設定（初回のみ）
 app.post('/make-server-7a759794/setup', async (c) => {
   try {
-    console.log('Setup endpoint called');
+    console.log('=== SETUP API CALLED ===');
     
     // 既にデータが存在するかチェック
     const existingUsers = await kv.getByPrefix('user:');
     console.log('Existing users count:', existingUsers.length);
     
     if (existingUsers.length > 0) {
-      console.log('Data already exists, skipping setup');
+      console.log('Setup skipped - users already exist');
       return c.json({ success: true, message: 'Data already exists', skipped: true });
     }
+
+    console.log('Starting fresh setup...');
+
+    // デフォルトの管理者パスワード（初回ログイン時に強制変更）
+    const defaultPassword = 'ChangeMe123!';
+    console.log('Hashing default password...');
+    const managerPasswordHash = await hashPassword(defaultPassword);
+    console.log('Password hashed successfully. Hash length:', managerPasswordHash.length);
 
     // サンプル拠点
     const locations = [
@@ -462,107 +576,21 @@ app.post('/make-server-7a759794/setup', async (c) => {
 
     // サンプルユーザー
     const users = [
-      { id: 'manager', username: 'manager', password: 'Manager@2024!Secure', name: '管理者', role: 'manager' },
-      { id: 'staff001', username: 'staff001', password: 'Staff001@Secure', name: '佐藤', role: 'staff', incentiveRate: 5 },
-      { id: 'staff002', username: 'staff002', password: 'Staff002@Secure', name: '鈴木', role: 'staff', incentiveRate: 5 },
-      { id: 'staff003', username: 'staff003', password: 'Staff003@Secure', name: '高橋', role: 'staff', incentiveRate: 5 },
+      { 
+        id: 'manager', 
+        username: 'manager', 
+        passwordHash: managerPasswordHash, 
+        name: '管理者', 
+        role: 'manager',
+        requirePasswordChange: true, // 初回ログイン時にパスワード変更を強制
+      },
     ];
 
-    // サンプルスタッフ（後方互換性のため）
+    // サンプルスタッフ
     const staff = [
       { id: '1', name: '佐藤' },
       { id: '2', name: '鈴木' },
       { id: '3', name: '高橋' },
-      { id: '4', name: '田中' },
-    ];
-
-    // サンプル予約
-    const reservations = [
-      {
-        id: '1',
-        date: '2025-10-27',
-        time: '10:00',
-        duration: 60,
-        parentName: '山田花子',
-        childName: '太郎',
-        childAge: 6,
-        customerNumber: 'C20251027001',
-        moldCount: 2,
-        paymentStatus: 'paid',
-        status: 'confirmed',
-        location: '東京本店',
-        staff: '佐藤',
-        createdBy: 'staff001',
-        notes: '手形・足形セット希望',
-      },
-      {
-        id: '2',
-        date: '2025-10-27',
-        time: '14:00',
-        duration: 30,
-        parentName: '田中美咲',
-        childName: 'さくら',
-        childAge: 3,
-        customerNumber: 'C20251027002',
-        moldCount: 1,
-        paymentStatus: 'unpaid',
-        status: 'confirmed',
-        location: '横浜店',
-        staff: '鈴木',
-        createdBy: 'staff002',
-        notes: '',
-      },
-      {
-        id: '3',
-        date: '2025-10-28',
-        time: '11:00',
-        duration: 45,
-        parentName: '佐々木健太',
-        childName: 'はると',
-        childAge: 12,
-        customerNumber: 'C20251028001',
-        moldCount: 4,
-        paymentStatus: 'paid',
-        status: 'confirmed',
-        location: '東京本店',
-        staff: '高橋',
-        createdBy: 'staff003',
-        notes: '家族全員分',
-      },
-      {
-        id: '4',
-        date: '2025-10-29',
-        time: '15:30',
-        duration: 30,
-        parentName: '鈴木真理',
-        childName: 'ゆい',
-        childAge: 18,
-        customerNumber: 'C20251029001',
-        moldCount: 2,
-        paymentStatus: 'unpaid',
-        status: 'standby',
-        location: '大阪店',
-        staff: '佐藤',
-        createdBy: 'staff001',
-        notes: '',
-      },
-      {
-        id: '5',
-        date: '2025-10-30',
-        time: '10:30',
-        duration: 60,
-        parentName: '伊藤愛',
-        childName: 'りく',
-        childAge: 4,
-        customerNumber: 'C20251030001',
-        moldCount: 2,
-        paymentStatus: 'paid',
-        status: 'confirmed',
-        location: '横浜店',
-        staff: '田中',
-        createdBy: 'staff002',
-        notes: '赤ちゃん初めての型取り',
-      },
     ];
 
     // データを保存
@@ -575,36 +603,41 @@ app.post('/make-server-7a759794/setup', async (c) => {
     console.log('Saving locations...');
     for (const location of locations) {
       await kv.set(`location:${location.id}`, location);
+      console.log('Saved location:', location.name);
     }
 
     console.log('Saving staff...');
     for (const s of staff) {
       await kv.set(`staff:${s.id}`, s);
+      console.log('Saved staff:', s.name);
     }
 
-    console.log('Saving reservations...');
-    for (const reservation of reservations) {
-      await kv.set(`reservation:${reservation.id}`, reservation);
-    }
+    console.log('=== SETUP COMPLETED SUCCESSFULLY ===');
 
-    console.log('Setup completed successfully');
     return c.json({ 
       success: true, 
-      message: 'Initial data setup completed',
+      message: 'Initial data setup completed. Please login with username: manager and change the default password immediately.',
       counts: {
         users: users.length,
         locations: locations.length,
         staff: staff.length,
-        reservations: reservations.length,
       }
     });
   } catch (error) {
-    console.error('Error setting up initial data:', error);
-    return c.json({ success: false, error: String(error) }, 500);
+    console.error('=== SETUP ERROR ===');
+    console.error('Error type:', typeof error);
+    console.error('Error details:', error);
+    console.error('Error message:', error instanceof Error ? error.message : String(error));
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    return c.json({ 
+      success: false, 
+      error: 'Setup failed: ' + (error instanceof Error ? error.message : String(error)),
+      details: error instanceof Error ? error.stack : undefined
+    }, 500);
   }
 });
 
-// ヘルスチェック
+// ヘルスチェック（認証不要）
 app.get('/make-server-7a759794/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });

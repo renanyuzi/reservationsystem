@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { User } from '../types/reservation';
 import { UserPlus, Edit, Trash2, Shield, User as UserIcon } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import * as api from '../utils/api';
 
 export function StaffManagement() {
   console.log('StaffManagement レンダリング');
@@ -29,16 +29,8 @@ export function StaffManagement() {
 
   const loadUsers = async () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/users`,
-        {
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` },
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data);
-      }
+      const data = await api.fetchUsers();
+      setUsers(data);
     } catch (error) {
       console.error('スタッフの読み込みに失敗:', error);
     }
@@ -48,32 +40,19 @@ export function StaffManagement() {
     e.preventDefault();
 
     try {
-      const url = editingUser
-        ? `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/users/${editingUser.id}`
-        : `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/users`;
-      const method = editingUser ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        await loadUsers();
-        setShowAddDialog(false);
-        setEditingUser(null);
-        resetForm();
+      if (editingUser) {
+        await api.updateUser(editingUser.id, formData);
       } else {
-        const error = await response.json();
-        alert(error.error || 'スタッフの保存に失敗しました');
+        await api.createUser(formData);
       }
-    } catch (error) {
+      
+      await loadUsers();
+      setShowAddDialog(false);
+      setEditingUser(null);
+      resetForm();
+    } catch (error: any) {
       console.error('スタッフの保存に失敗:', error);
-      alert('スタッフの保存に失敗しました');
+      alert(error.message || 'スタッフの保存に失敗しました');
     }
   };
 
@@ -81,20 +60,11 @@ export function StaffManagement() {
     if (!confirm('このスタッフを削除してもよろしいですか？')) return;
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/users/${userId}`,
-        {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` },
-        }
-      );
-
-      if (response.ok) {
-        await loadUsers();
-      }
-    } catch (error) {
+      await api.deleteUser(userId);
+      await loadUsers();
+    } catch (error: any) {
       console.error('スタッフの削除に失敗:', error);
-      alert('スタッフの削除に失敗しました');
+      alert(error.message || 'スタッフの削除に失敗しました');
     }
   };
 

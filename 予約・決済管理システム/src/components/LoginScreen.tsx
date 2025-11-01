@@ -5,12 +5,10 @@ import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { User } from '../types/reservation';
 import { LogIn, UserCircle, Shield, AlertCircle } from 'lucide-react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { QuickSetup } from './QuickSetup';
-import { ResetSetup } from './ResetSetup';
+import * as api from '../utils/api';
 
 interface LoginScreenProps {
-  onLogin: (user: User) => void;
+  onLogin: (user: User, token: string) => void;
 }
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
@@ -18,7 +16,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState(false);
   const [error, setError] = useState('');
 
   // デバッグ: コンポーネントがマウントされたことをログ
@@ -34,61 +31,24 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     };
   }, []);
 
-  // 管理職アカウントの存在確認（初回のみ）
+  // 初期セットアップの確認
   useEffect(() => {
-    const checkManagerAccount = async () => {
+    const checkSetup = async () => {
       try {
-        console.log('👔 管理職アカウントの確認中...');
+        console.log('👔 システムのセットアップを確認中...');
         
-        // セットアップ済みフラグをチェック
-        const setupCompleted = localStorage.getItem('setupCompleted');
-        if (setupCompleted === 'true') {
-          console.log('✅ セットアップ済み（ローカルストレージ）');
-          setIsInitializing(false);
-          return;
-        }
-
-        // まずヘルスチェック
-        const healthRes = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/health`,
-          { headers: { 'Authorization': `Bearer ${publicAnonKey}` } }
-        );
-        
-        if (!healthRes.ok) {
-          throw new Error('サーバーに接続できません');
-        }
-
-        // ユーザー一覧を取得
-        const usersRes = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/users`,
-          { headers: { 'Authorization': `Bearer ${publicAnonKey}` } }
-        );
-        
-        if (usersRes.ok) {
-          const users = await usersRes.json();
-          const hasManager = users.some((u: any) => u.username === 'manager');
-          
-          if (!hasManager) {
-            console.log('⚠️ 管理職アカウントが存在しません。セットアップが必要です。');
-            setNeedsSetup(true);
-          } else {
-            console.log('✅ 管理職アカウントが存在します');
-            // セットアップ完了フラグを保存
-            localStorage.setItem('setupCompleted', 'true');
-          }
-        } else {
-          // ユーザー取得に失敗 = 空のDBかもしれない
-          setNeedsSetup(true);
-        }
+        // セットアップAPIを呼び出し（既にセットアップ済みの場合はskipped=trueが返る）
+        await api.setupInitialData();
+        console.log('✅ セットアップ確認完了');
       } catch (err) {
-        console.error('❌ ���認エラー:', err);
-        setError('サーバーへの接続に失敗しました。');
+        console.error('❌ セットアップ確認エラー:', err);
+        // セットアップエラーは無視（既にセットアップ済みの可能性）
       } finally {
         setIsInitializing(false);
       }
     };
 
-    checkManagerAccount();
+    checkSetup();
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -100,27 +60,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       console.log('=== ログイン試行 ===');
       console.log('ユーザー名:', username);
       
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-7a759794/api/auth/login`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username, password }),
-        }
-      );
-
-      const data = await response.json();
-      console.log('ログイン応答:', response.status, data);
-
-      if (!response.ok) {
-        console.error('ログイン失敗:', data);
-        throw new Error(data.error || 'ログインに失敗しました');
-      }
-
-      console.log('✅ ログイン成功:', data.name);
+      const { user, token } = await api.login(username, password);
+      console.log('✅ ログイン成功:', user.name);
       
       // ログイン成功したらフォームをクリア
       setUsername('');
@@ -128,13 +69,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       setError('');
       
       // ログイン情報をコールバックで渡す
-      onLogin(data);
-      
-      // ログイン情報がlocalStorageに保存された後、少し待ってからリフレッシュ
-      console.log('🔄 ページをリフレッシュします...');
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
+      onLogin(user, token);
     } catch (err) {
       console.error('❌ ログインエラー:', err);
       setError(err instanceof Error ? err.message : 'ログインに失敗しました');
@@ -170,31 +105,29 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     );
   }
 
-  // セットアップ完了後の処理
-  const handleSetupComplete = () => {
-    setNeedsSetup(false);
-    setIsInitializing(false);
-    // セットアップ完了フラグを保存
-    localStorage.setItem('setupCompleted', 'true');
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex flex-col items-center justify-center p-4">
-      {/* パスワード変更のお知らせ */}
-      {!needsSetup && error.includes('Invalid credentials') && (
+      {/* 初回ログイン時のお知らせ */}
+      {!error && (
         <div className="w-full max-w-md mb-4">
-          <ResetSetup />
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg text-sm">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">初回ログイン</p>
+                <p className="text-xs mt-1">
+                  デフォルトのログイン情報:<br />
+                  <span className="font-mono">ユーザー名: manager</span><br />
+                  <span className="font-mono">パスワード: ChangeMe123!</span><br />
+                  <span className="text-blue-600">※ログイン後、必ずパスワードを変更してください</span>
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {needsSetup && (
-        <div className="w-full max-w-md">
-          <QuickSetup onComplete={handleSetupComplete} />
-        </div>
-      )}
-
-      {!needsSetup && (
-        <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-2">
             <UserCircle className="w-10 h-10 text-white" />
@@ -209,7 +142,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <Input
                 id="username"
                 type="text"
-                placeholder="例: staff001"
+                placeholder="例: manager"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -258,7 +191,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </form>
         </CardContent>
       </Card>
-      )}
     </div>
   );
 }
