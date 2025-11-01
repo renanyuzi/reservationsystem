@@ -8,7 +8,7 @@ function getAuthToken(): string | null {
   return sessionStorage.getItem('authToken');
 }
 
-// 認証ヘッダーを取得
+// 認証済みリクエスト用のヘッダーを取得（JWTトークンを使用）
 function getHeaders(): HeadersInit {
   const token = getAuthToken();
   
@@ -23,6 +23,15 @@ function getHeaders(): HeadersInit {
   return headers;
 }
 
+// 認証前リクエスト用のヘッダーを取得（匿名キーを使用）
+function getPublicHeaders(): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${publicAnonKey}`,
+    'apikey': publicAnonKey,
+  };
+}
+
 // ========================================
 // 認証API
 // ========================================
@@ -31,9 +40,7 @@ export async function login(username: string, password: string): Promise<{ user:
   try {
     const response = await fetch(`${BASE_URL}/api/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getPublicHeaders(), // 匿名キーを含むヘッダーを使用
       body: JSON.stringify({ username, password }),
     });
 
@@ -403,9 +410,7 @@ export async function setupInitialData(): Promise<void> {
     console.log('🔧 セットアップAPIを呼び出しています...');
     const response = await fetch(`${BASE_URL}/setup`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getPublicHeaders(), // 匿名キーを含むヘッダーを使用
     });
     
     const data = await response.json();
