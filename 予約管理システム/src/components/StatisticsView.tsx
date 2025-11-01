@@ -73,17 +73,27 @@ export function StatisticsView({ reservations }: StatisticsViewProps) {
       .sort((a, b) => b.count - a.count);
   }, [monthReservations]);
 
+  // 売上・インセンティブ計算
+  const calculateRevenue = (moldCount: number): number => {
+    if (moldCount === 1) return 15000;
+    if (moldCount >= 2) return 20000;
+    return 0;
+  };
+
+  const INCENTIVE_PER_RESERVATION = 1000;
+
   // 決済ステータス別統計
   const paymentStats = useMemo(() => {
     const stats = {
-      paid: { count: 0, totalMoldCount: 0 },
-      unpaid: { count: 0, totalMoldCount: 0 },
-      pending: { count: 0, totalMoldCount: 0 },
+      paid: { count: 0, totalMoldCount: 0, revenue: 0 },
+      unpaid: { count: 0, totalMoldCount: 0, revenue: 0 },
+      pending: { count: 0, totalMoldCount: 0, revenue: 0 },
     };
 
     monthReservations.forEach((r) => {
       stats[r.paymentStatus].count++;
       stats[r.paymentStatus].totalMoldCount += r.moldCount;
+      stats[r.paymentStatus].revenue += calculateRevenue(r.moldCount);
     });
 
     return [
@@ -91,18 +101,28 @@ export function StatisticsView({ reservations }: StatisticsViewProps) {
         status: '支払済',
         count: stats.paid.count,
         avgMoldCount: stats.paid.count > 0 ? (stats.paid.totalMoldCount / stats.paid.count).toFixed(1) : 0,
+        revenue: stats.paid.revenue,
       },
       {
         status: '未決済',
         count: stats.unpaid.count,
         avgMoldCount: stats.unpaid.count > 0 ? (stats.unpaid.totalMoldCount / stats.unpaid.count).toFixed(1) : 0,
+        revenue: stats.unpaid.revenue,
       },
       {
         status: '保留',
         count: stats.pending.count,
         avgMoldCount: stats.pending.count > 0 ? (stats.pending.totalMoldCount / stats.pending.count).toFixed(1) : 0,
+        revenue: stats.pending.revenue,
       },
     ];
+  }, [monthReservations]);
+
+  // 総売上とインセンティブ
+  const totalStats = useMemo(() => {
+    const totalRevenue = monthReservations.reduce((sum, r) => sum + calculateRevenue(r.moldCount), 0);
+    const totalIncentive = monthReservations.length * INCENTIVE_PER_RESERVATION;
+    return { totalRevenue, totalIncentive };
   }, [monthReservations]);
 
   // 型取り本数統計
@@ -166,7 +186,7 @@ export function StatisticsView({ reservations }: StatisticsViewProps) {
         </div>
 
         {/* サマリーカード */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-8 h-8 text-indigo-600" />
@@ -191,14 +211,20 @@ export function StatisticsView({ reservations }: StatisticsViewProps) {
             <p className="text-gray-900">{moldCountStats.avg}本</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
             <div className="flex items-center gap-3 mb-2">
-              <DollarSign className="w-8 h-8 text-yellow-600" />
-              <p className="text-gray-600">支払済件数</p>
+              <DollarSign className="w-8 h-8 opacity-80" />
+              <p className="text-green-100">総売上</p>
             </div>
-            <p className="text-gray-900">
-              {paymentStats.find((s) => s.status === '支払済')?.count || 0}件
-            </p>
+            <p className="text-2xl">¥{totalStats.totalRevenue.toLocaleString()}</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
+            <div className="flex items-center gap-3 mb-2">
+              <TrendingUp className="w-8 h-8 opacity-80" />
+              <p className="text-blue-100">インセンティブ</p>
+            </div>
+            <p className="text-2xl">¥{totalStats.totalIncentive.toLocaleString()}</p>
           </div>
         </div>
 

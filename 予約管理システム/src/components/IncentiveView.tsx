@@ -13,12 +13,8 @@ interface IncentiveViewProps {
   staff: string[];
 }
 
-// インセンティブ計算：1本15000円、2本20000円
-const calculateIncentive = (moldCount: number): number => {
-  if (moldCount === 1) return 15000;
-  if (moldCount >= 2) return 20000;
-  return 0;
-};
+// インセンティブ：1件1000円
+const INCENTIVE_PER_RESERVATION = 1000;
 const STAFF_COLORS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4',
   '#f97316', '#ef4444', '#14b8a6', '#a855f7',
@@ -48,21 +44,17 @@ export function IncentiveView({ reservations, staff }: IncentiveViewProps) {
 
   // スタッフ別獲得実績
   const staffStats = useMemo(() => {
-    const stats: { [key: string]: { count: number; totalAmount: number } } = {};
+    const stats: { [key: string]: number } = {};
 
     monthReservations.forEach((r) => {
-      if (!stats[r.staffInCharge]) {
-        stats[r.staffInCharge] = { count: 0, totalAmount: 0 };
-      }
-      stats[r.staffInCharge].count += 1;
-      stats[r.staffInCharge].totalAmount += calculateIncentive(r.moldCount);
+      stats[r.staffInCharge] = (stats[r.staffInCharge] || 0) + 1;
     });
 
     return Object.entries(stats)
-      .map(([name, data]) => ({
+      .map(([name, count]) => ({
         name,
-        count: data.count,
-        incentive: data.totalAmount,
+        count,
+        incentive: count * INCENTIVE_PER_RESERVATION,
       }))
       .sort((a, b) => b.incentive - a.incentive);
   }, [monthReservations]);
@@ -277,7 +269,7 @@ export function IncentiveView({ reservations, staff }: IncentiveViewProps) {
             <DollarSign className="w-5 h-5 text-blue-600" />
             <p className="text-blue-800">インセンティブ基準</p>
           </div>
-          <p className="text-blue-700">1件あたり ¥{INCENTIVE_PER_RESERVATION.toLocaleString()}</p>
+          <p className="text-blue-700">1件あたり ¥1,000</p>
         </div>
       </div>
     </div>

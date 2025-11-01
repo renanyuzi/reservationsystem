@@ -271,7 +271,14 @@ export default function App() {
         ) : (
           <>
             {currentView === 'dashboard' && (
-              <DashboardView role={currentUser.role} userName={currentUser.name} />
+              <DashboardView 
+                role={currentUser.role} 
+                userName={currentUser.name} 
+                onNavigate={(view, data) => {
+                  setCurrentView(view as View);
+                  // データがある場合は追加の処理を実装可能
+                }}
+              />
             )}
 
             {currentView === 'calendar' && (

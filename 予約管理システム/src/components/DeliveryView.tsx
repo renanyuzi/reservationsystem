@@ -9,10 +9,12 @@ interface Reservation {
   childName: string;
   customerId: string;
   location: string;
+  reservationStatus?: 'standby' | 'confirmed';
   engravingName?: string;
   engravingDate?: string;
   fontStyle?: 'mincho' | 'gothic' | 'cursive';
   deliveryStatus?: 'pending' | 'shipped' | 'completed';
+  scheduledDeliveryDate?: string;
   createdAt: string;
 }
 
@@ -29,7 +31,7 @@ const FONT_STYLE_LABELS = {
 
 const DELIVERY_STATUS_LABELS = {
   pending: '制作中',
-  shipped: '発送済み',
+  shipped: '受け取り待ち',
   completed: '完了',
 };
 
@@ -54,13 +56,21 @@ function calculateDeliveryDates(moldingDate: string) {
 }
 
 // 納期アラート判定
-function getDeliveryAlert(moldingDate: string, status?: string) {
+function getDeliveryAlert(moldingDate: string, status?: string, scheduledDeliveryDate?: string) {
   if (status === 'completed') return null;
   
   const today = new Date();
-  const { maxDate } = calculateDeliveryDates(moldingDate);
-  const maxDeliveryDate = new Date(maxDate);
-  const daysRemaining = Math.floor((maxDeliveryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  let targetDate: Date;
+  
+  // scheduledDeliveryDateがあればそれを使用、なければ計算
+  if (scheduledDeliveryDate) {
+    targetDate = new Date(scheduledDeliveryDate);
+  } else {
+    const { maxDate } = calculateDeliveryDates(moldingDate);
+    targetDate = new Date(maxDate);
+  }
+  
+  const daysRemaining = Math.floor((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   
   if (daysRemaining < 0) {
     return { type: 'overdue', days: Math.abs(daysRemaining) };
@@ -72,6 +82,20 @@ function getDeliveryAlert(moldingDate: string, status?: string) {
   return null;
 }
 
+// 受け取り待ちアラート判定（2週間経過）
+function getPickupAlert(createdAt: string, status?: string) {
+  if (status !== 'shipped') return null;
+  
+  const today = new Date();
+  const createdDate = new Date(createdAt);
+  const daysSinceShipped = Math.floor((today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (daysSinceShipped >= 14) {
+    return { type: 'pickup_overdue', days: daysSinceShipped };
+  }
+  return null;
+}
+
 export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'shipped' | 'completed'>('all');
@@ -79,6 +103,9 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
   // 予約を納期でソート（期限が近い順）
   const sortedReservations = useMemo(() => {
     let filtered = reservations.filter((r) => {
+      // 仮予約は除外
+      if (r.reservationStatus === 'standby') return false;
+      
       const matchesSearch = 
         searchQuery === '' ||
         r.parentName.includes(searchQuery) ||
@@ -97,7 +124,7 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
       const alertA = getDeliveryAlert(a.date, a.deliveryStatus);
       const alertB = getDeliveryAlert(b.date, b.deliveryStatus);
       
-      // 期限切れ -> 緊急 -> 警告 -> その他の順
+      // 期限切れ -> 緊急 -> ���告 -> その他の順
       const priorityA = alertA?.type === 'overdue' ? 0 : alertA?.type === 'urgent' ? 1 : alertA?.type === 'warning' ? 2 : 3;
       const priorityB = alertB?.type === 'overdue' ? 0 : alertB?.type === 'urgent' ? 1 : alertB?.type === 'warning' ? 2 : 3;
       
@@ -186,7 +213,7 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
           >
             <option value="all">すべて</option>
             <option value="pending">制作中</option>
-            <option value="shipped">発送済み</option>
+            <option value="shipped">受け取り待ち</option>
             <option value="completed">完了</option>
           </select>
         </div>
@@ -202,14 +229,17 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
           <div className="space-y-3">
             {sortedReservations.map((reservation) => {
               const { minDate, maxDate } = calculateDeliveryDates(reservation.date);
-              const alert = getDeliveryAlert(reservation.date, reservation.deliveryStatus);
+              const alert = getDeliveryAlert(reservation.date, reservation.deliveryStatus, reservation.scheduledDeliveryDate);
+              const pickupAlert = getPickupAlert(reservation.createdAt, reservation.deliveryStatus);
               const status = reservation.deliveryStatus || 'pending';
               
               return (
                 <div
                   key={reservation.id}
                   className={`bg-white rounded-lg border-2 p-4 hover:shadow-md transition-all ${
-                    alert?.type === 'overdue' 
+                    pickupAlert?.type === 'pickup_overdue'
+                      ? 'border-purple-400 bg-purple-50'
+                      : alert?.type === 'overdue' 
                       ? 'border-red-400 bg-red-50' 
                       : alert?.type === 'urgent'
                       ? 'border-orange-400 bg-orange-50'
@@ -220,10 +250,16 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`px-3 py-1 rounded border-2 text-sm ${DELIVERY_STATUS_COLORS[status]}`}>
                           {DELIVERY_STATUS_LABELS[status]}
                         </span>
+                        {pickupAlert && (
+                          <span className="px-2 py-1 rounded text-xs bg-purple-600 text-white flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            受け取り待ち {pickupAlert.days}日経過
+                          </span>
+                        )}
                         {alert && (
                           <span className={`px-2 py-1 rounded text-xs ${
                             alert.type === 'overdue' 
@@ -256,7 +292,10 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
                           <span className="text-gray-500">型取り日:</span> <span className="text-gray-900">{reservation.date}</span>
                         </div>
                         <div>
-                          <span className="text-gray-500">納期目安:</span> <span className="text-gray-900">{minDate} ～ {maxDate}</span>
+                          <span className="text-gray-500">納期:</span> 
+                          <span className="text-gray-900">
+                            {reservation.scheduledDeliveryDate || `${minDate} ～ ${maxDate}`}
+                          </span>
                         </div>
                       </div>
                       
@@ -303,7 +342,7 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
                             : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                         }`}
                       >
-                        発送済み
+                        受け取り待ち
                       </button>
                       <button
                         onClick={() => onUpdateDeliveryStatus(reservation.id, 'completed')}
