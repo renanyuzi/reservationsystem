@@ -54,10 +54,12 @@ export function CustomerManagement() {
     setLoading(true);
     try {
       const result = await api.getCustomers();
-      setCustomers(result.customers);
+      console.log('顧客データ:', result);
+      setCustomers(result.customers || []);
     } catch (err) {
       console.error('顧客一覧取得エラー:', err);
-      alert('顧客一覧の取得に失敗しました');
+      alert(`顧客一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
@@ -83,7 +85,7 @@ export function CustomerManagement() {
       await loadCustomers();
     } catch (err) {
       console.error('顧客削除エラー:', err);
-      alert('顧客の削除に失敗しました');
+      alert(`顧客の削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -247,6 +249,16 @@ function CustomerDialog({ customer, onClose, onSuccess }: CustomerDialogProps) {
       return;
     }
 
+    if (!formData.parentName.trim()) {
+      setError('親名を入力してください');
+      return;
+    }
+
+    if (!formData.childName.trim()) {
+      setError('子名を入力してください');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -257,6 +269,7 @@ function CustomerDialog({ customer, onClose, onSuccess }: CustomerDialogProps) {
       }
       onSuccess();
     } catch (err) {
+      console.error('顧客保存エラー:', err);
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
       setLoading(false);

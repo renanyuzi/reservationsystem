@@ -308,10 +308,10 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
                   </button>
                   <button
                     onClick={() => setShowAddDialog(true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg hover:shadow-xl"
                   >
-                    <Plus className="w-4 h-4" />
-                    予約追加
+                    <Plus className="w-5 h-5" />
+                    <span>新規予約追加</span>
                   </button>
                 </div>
               </div>

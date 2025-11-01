@@ -58,12 +58,16 @@ export default function App() {
         api.getStaff(),
       ]);
 
-      setReservations(reservationsResult.reservations);
-      setLocations(locationsResult.locations);
-      setStaff(staffResult.staff);
+      console.log('予約データ:', reservationsResult);
+      console.log('拠点データ:', locationsResult);
+      console.log('スタッフデータ:', staffResult);
+
+      setReservations(reservationsResult.reservations || []);
+      setLocations(locationsResult.locations || []);
+      setStaff(staffResult.staff || []);
     } catch (err) {
       console.error('データ読み込みエラー:', err);
-      alert('データの読み込みに失敗しました');
+      alert(`データの読み込みに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -76,8 +80,11 @@ export default function App() {
         api.getStaff(),
       ]);
 
-      setLocations(locationsResult.locations);
-      setStaff(staffResult.staff);
+      console.log('マスターデータ更新 - 拠点:', locationsResult);
+      console.log('マスターデータ更新 - スタッフ:', staffResult);
+
+      setLocations(locationsResult.locations || []);
+      setStaff(staffResult.staff || []);
     } catch (err) {
       console.error('マスターデータ読み込みエラー:', err);
     }

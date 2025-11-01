@@ -28,6 +28,19 @@ interface ReservationDialogProps {
   onRefreshMasters?: () => void;
 }
 
+// 9:00-17:00の30分単位の時間スロットを生成
+const generateTimeSlots = () => {
+  const slots = [];
+  for (let hour = 9; hour <= 17; hour++) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      if (hour === 17 && minute > 0) break; // 17:00までで終了
+      const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      slots.push(time);
+    }
+  }
+  return slots;
+};
+
 export function ReservationDialog({
   reservation,
   selectedDate,
@@ -39,6 +52,7 @@ export function ReservationDialog({
 }: ReservationDialogProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const timeSlots = generateTimeSlots();
 
   useEffect(() => {
     // ダイアログが開かれたときにマスターデータをリフレッシュ
@@ -57,14 +71,48 @@ export function ReservationDialog({
     moldCount: reservation?.moldCount || 1,
     paymentStatus: reservation?.paymentStatus || 'unpaid' as const,
     progressStatus: reservation?.progressStatus || 'waiting' as const,
-    location: reservation?.location || (locations[0] || ''),
-    staffInCharge: reservation?.staffInCharge || (staff[0] || ''),
+    location: reservation?.location || (locations.length > 0 ? locations[0] : ''),
+    staffInCharge: reservation?.staffInCharge || (staff.length > 0 ? staff[0] : ''),
     note: reservation?.note || '',
   });
+
+  // スタッフまたは拠点が更新されたらフォームデータも更新
+  useEffect(() => {
+    if (!reservation) {
+      if (locations.length > 0 && !formData.location) {
+        setFormData(prev => ({ ...prev, location: locations[0] }));
+      }
+      if (staff.length > 0 && !formData.staffInCharge) {
+        setFormData(prev => ({ ...prev, staffInCharge: staff[0] }));
+      }
+    }
+  }, [locations, staff, reservation, formData.location, formData.staffInCharge]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // バリデーション
+    if (locations.length === 0) {
+      setError('拠点が設定されていません。設定画面から拠点を追加してください。');
+      return;
+    }
+
+    if (staff.length === 0) {
+      setError('担当スタッフが設定されていません。設定画面からスタッフを追加してください。');
+      return;
+    }
+
+    if (!formData.location) {
+      setError('拠点を選択してください');
+      return;
+    }
+
+    if (!formData.staffInCharge) {
+      setError('担当スタッフを選択してください');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -75,6 +123,7 @@ export function ReservationDialog({
       }
       onSuccess();
     } catch (err) {
+      console.error('予約保存エラー:', err);
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
       setLoading(false);
@@ -83,14 +132,14 @@ export function ReservationDialog({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-gray-900">
-            {reservation ? '予約編集' : '予約追加'}
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-auto">
+        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-indigo-600 to-indigo-700">
+          <h2 className="text-white">
+            {reservation ? '予約編集' : '新規予約追加'}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-indigo-800 rounded-lg transition-colors text-white"
           >
             <X className="w-5 h-5" />
           </button>
@@ -111,26 +160,33 @@ export function ReservationDialog({
 
             <div>
               <label className="block text-gray-700 mb-2">時間帯 *</label>
-              <input
-                type="time"
+              <select
                 value={formData.timeSlot}
                 onChange={(e) => setFormData({ ...formData, timeSlot: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 required
-              />
+              >
+                {timeSlots.map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label className="block text-gray-700 mb-2">所要時間（分） *</label>
-              <input
-                type="number"
+              <label className="block text-gray-700 mb-2">所要時間 *</label>
+              <select
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                min="15"
-                step="15"
                 required
-              />
+              >
+                <option value={30}>30分</option>
+                <option value={60}>60分</option>
+                <option value={90}>90分</option>
+                <option value={120}>120分</option>
+              </select>
             </div>
 
             <div>
@@ -186,6 +242,9 @@ export function ReservationDialog({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 required
               >
+                {locations.length === 0 && (
+                  <option value="">拠点を設定してください</option>
+                )}
                 {locations.map((loc) => (
                   <option key={loc} value={loc}>
                     {loc}
@@ -202,6 +261,9 @@ export function ReservationDialog({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 required
               >
+                {staff.length === 0 && (
+                  <option value="">スタッフを設定してください</option>
+                )}
                 {staff.map((s) => (
                   <option key={s} value={s}>
                     {s}

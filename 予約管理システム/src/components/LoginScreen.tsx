@@ -118,14 +118,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             )}
           </button>
         </form>
-
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-blue-800 mb-2">初期アカウント</p>
-          <p className="text-blue-700">
-            <strong>ユーザー名:</strong> manager<br />
-            <strong>パスワード:</strong> ChangeMe123!
-          </p>
-        </div>
       </div>
     </div>
   );
