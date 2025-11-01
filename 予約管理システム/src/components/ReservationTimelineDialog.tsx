@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Loader2, Clock, Package, CreditCard, CheckCircle, MapPin, Calendar, User, Phone, MessageCircle, Home, Truck, Edit2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { Reservation, TimelineEvent } from '../types';
+import { getCustomerInfo } from '../utils/reservationHelpers';
 
 interface ReservationTimelineDialogProps {
   reservationId: string;
@@ -37,13 +38,14 @@ export function ReservationTimelineDialog({ reservationId, onClose, onUpdate }: 
   };
 
   const generateTimeline = (res: Reservation) => {
+    const customerInfo = getCustomerInfo(res);
     const events: TimelineEvent[] = [
       {
         id: '1',
         reservationId: res.id,
         type: 'created',
         title: '予約作成',
-        description: `${res.parentName}様の予約が作成されました`,
+        description: `${customerInfo.parentName}様の予約が作成されました`,
         timestamp: res.createdAt || res.date,
         performedBy: res.staffInCharge,
       },
@@ -197,6 +199,8 @@ export function ReservationTimelineDialog({ reservationId, onClose, onUpdate }: 
   const scheduledDelivery = reservation.scheduledDeliveryDate || 
     (reservation.date ? new Date(new Date(reservation.date).getTime() + 35 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '');
 
+  const customerInfo = getCustomerInfo(reservation);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-auto">
       <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-hidden flex flex-col">
@@ -239,47 +243,47 @@ export function ReservationTimelineDialog({ reservationId, onClose, onUpdate }: 
                 <div className="space-y-3">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">顧客番号</p>
-                    <p className="text-gray-900 font-mono">{reservation.customerId}</p>
+                    <p className="text-gray-900 font-mono">{customerInfo.customerId}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">親御さん</p>
-                    <p className="text-gray-900">{reservation.parentName}</p>
+                    <p className="text-gray-900">{customerInfo.parentName}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">お子さま</p>
-                    <p className="text-gray-900">{reservation.childName}</p>
+                    <p className="text-gray-900">{customerInfo.childName}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">年齢</p>
                     <p className="text-gray-900">
-                      {reservation.age > 0 ? `${reservation.age}歳` : `${reservation.ageMonths || 0}ヶ月`}
+                      {customerInfo.age > 0 ? `${customerInfo.age}歳` : `${customerInfo.ageMonths || 0}ヶ月`}
                     </p>
                   </div>
-                  {reservation.phoneNumber && (
+                  {customerInfo.phoneNumber && (
                     <div>
                       <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                         <Phone className="w-3 h-3" />
                         電話番号
                       </p>
-                      <p className="text-gray-900">{reservation.phoneNumber}</p>
+                      <p className="text-gray-900">{customerInfo.phoneNumber}</p>
                     </div>
                   )}
-                  {reservation.address && (
+                  {customerInfo.address && (
                     <div>
                       <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                         <Home className="w-3 h-3" />
                         住所
                       </p>
-                      <p className="text-gray-900 text-sm">{reservation.address}</p>
+                      <p className="text-gray-900 text-sm">{customerInfo.address}</p>
                     </div>
                   )}
-                  {reservation.lineUrl && (
+                  {customerInfo.lineUrl && (
                     <div>
                       <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                         <MessageCircle className="w-3 h-3" />
                         LINE
                       </p>
-                      <a href={reservation.lineUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-sm">
+                      <a href={customerInfo.lineUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-sm">
                         LINEで連絡
                       </a>
                     </div>

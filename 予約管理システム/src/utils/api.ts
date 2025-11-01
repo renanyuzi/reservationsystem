@@ -113,4 +113,10 @@ export const api = {
     apiCall(`/customers/${id}`, {
       method: 'DELETE',
     }),
+  
+  // データマイグレーション
+  migrateReservationsToCustomers: () =>
+    apiCall('/migrate/reservations-to-customers', {
+      method: 'POST',
+    }),
 };

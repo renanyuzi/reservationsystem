@@ -1,33 +1,8 @@
 import { useState } from 'react';
 import { X, Edit, Trash2, Loader2 } from 'lucide-react';
 import { api } from '../utils/api';
-
-interface Reservation {
-  id: string;
-  date: string;
-  timeSlot: string;
-  duration: number;
-  parentName: string;
-  childName: string;
-  age: number;
-  ageMonths?: number;
-  customerId: string;
-  phoneNumber?: string;
-  address?: string;
-  lineUrl?: string;
-  moldCount: number;
-  paymentStatus: 'paid' | 'unpaid' | 'pending';
-  reservationStatus: 'standby' | 'confirmed';
-  location: string;
-  staffInCharge: string;
-  note: string;
-  engravingName?: string;
-  engravingDate?: string;
-  fontStyle?: 'mincho' | 'gothic' | 'cursive';
-  deliveryStatus?: 'pending' | 'shipped' | 'completed';
-  createdBy: string;
-  createdAt: string;
-}
+import { Reservation } from '../types';
+import { getCustomerInfo } from '../utils/reservationHelpers';
 
 interface ReservationDetailDialogProps {
   reservation: Reservation;
@@ -68,6 +43,7 @@ export function ReservationDetailDialog({
 }: ReservationDetailDialogProps) {
   const [loading, setLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const customerInfo = getCustomerInfo(reservation);
 
   const handleDelete = async () => {
     setLoading(true);
@@ -120,40 +96,40 @@ export function ReservationDetailDialog({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-gray-500">親名</p>
-                <p className="text-gray-900">{reservation.parentName}</p>
+                <p className="text-gray-900">{customerInfo.parentName}</p>
               </div>
               <div>
                 <p className="text-gray-500">子名</p>
-                <p className="text-gray-900">{reservation.childName}</p>
+                <p className="text-gray-900">{customerInfo.childName}</p>
               </div>
               <div>
                 <p className="text-gray-500">年齢</p>
                 <p className="text-gray-900">
-                  {reservation.age}歳
-                  {reservation.age === 0 && reservation.ageMonths && ` (${reservation.ageMonths}ヶ月)`}
+                  {customerInfo.age}歳
+                  {customerInfo.age === 0 && customerInfo.ageMonths && ` (${customerInfo.ageMonths}ヶ月)`}
                 </p>
               </div>
               <div>
                 <p className="text-gray-500">顧客番号</p>
-                <p className="text-gray-900">{reservation.customerId}</p>
+                <p className="text-gray-900">{customerInfo.customerId}</p>
               </div>
-              {reservation.phoneNumber && (
+              {customerInfo.phoneNumber && (
                 <div>
                   <p className="text-gray-500">電話番号</p>
-                  <p className="text-gray-900">{reservation.phoneNumber}</p>
+                  <p className="text-gray-900">{customerInfo.phoneNumber}</p>
                 </div>
               )}
-              {reservation.address && (
+              {customerInfo.address && (
                 <div className="md:col-span-2">
                   <p className="text-gray-500">住所</p>
-                  <p className="text-gray-900">{reservation.address}</p>
+                  <p className="text-gray-900">{customerInfo.address}</p>
                 </div>
               )}
-              {reservation.lineUrl && (
+              {customerInfo.lineUrl && (
                 <div className="md:col-span-2">
                   <p className="text-gray-500">LINE URL</p>
-                  <a href={reservation.lineUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline break-all">
-                    {reservation.lineUrl}
+                  <a href={customerInfo.lineUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline break-all">
+                    {customerInfo.lineUrl}
                   </a>
                 </div>
               )}

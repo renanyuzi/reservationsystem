@@ -3,33 +3,8 @@ import { ChevronLeft, ChevronRight, Search, X, Plus, Edit2, Check, Eye } from 'l
 import { ReservationDialog } from './ReservationDialog';
 import { ReservationDetailDialog } from './ReservationDetailDialog';
 import { ReservationTimelineDialog } from './ReservationTimelineDialog';
-
-interface Reservation {
-  id: string;
-  date: string;
-  timeSlot: string;
-  duration: number;
-  parentName: string;
-  childName: string;
-  age: number;
-  ageMonths?: number;
-  customerId: string;
-  phoneNumber?: string;
-  address?: string;
-  lineUrl?: string;
-  moldCount: number;
-  paymentStatus: 'paid' | 'unpaid' | 'pending';
-  reservationStatus: 'standby' | 'confirmed';
-  location: string;
-  staffInCharge: string;
-  note: string;
-  engravingName?: string;
-  engravingDate?: string;
-  fontStyle?: 'mincho' | 'gothic' | 'cursive';
-  deliveryStatus?: 'pending' | 'shipped' | 'completed';
-  createdBy: string;
-  createdAt: string;
-}
+import { Reservation } from '../types';
+import { getCustomerInfo, getSearchableText } from '../utils/reservationHelpers';
 
 interface CalendarViewProps {
   reservations: Reservation[];
@@ -155,13 +130,7 @@ export function CalendarView({ reservations, locations, staff, onReservationChan
 
     const query = searchQuery.toLowerCase();
     return reservations.filter(r => 
-      r.parentName.toLowerCase().includes(query) ||
-      r.childName.toLowerCase().includes(query) ||
-      r.customerId.toLowerCase().includes(query) ||
-      r.location.toLowerCase().includes(query) ||
-      r.staffInCharge.toLowerCase().includes(query) ||
-      r.note.toLowerCase().includes(query) ||
-      r.id.toLowerCase().includes(query)
+      getSearchableText(r).includes(query)
     );
   }, [reservations, searchQuery]);
 

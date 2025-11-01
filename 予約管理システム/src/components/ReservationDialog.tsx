@@ -1,43 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, Search, User } from 'lucide-react';
 import { api } from '../utils/api';
-
-interface Customer {
-  customerId: string;
-  parentName: string;
-  childName: string;
-  age?: number;
-  ageMonths?: number;
-  phoneNumber: string;
-  address?: string;
-  lineUrl: string;
-  note: string;
-}
-
-interface Reservation {
-  id: string;
-  date: string;
-  timeSlot: string;
-  duration: number;
-  parentName: string;
-  childName: string;
-  age: number;
-  ageMonths?: number;
-  customerId: string;
-  phoneNumber?: string;
-  address?: string;
-  lineUrl?: string;
-  moldCount: number;
-  paymentStatus: 'paid' | 'unpaid' | 'pending';
-  reservationStatus: 'standby' | 'confirmed';
-  location: string;
-  staffInCharge: string;
-  note: string;
-  engravingName?: string;
-  engravingDate?: string;
-  fontStyle?: 'mincho' | 'gothic' | 'cursive';
-  deliveryStatus?: 'pending' | 'shipped' | 'completed';
-}
+import { Reservation, Customer } from '../types';
+import { getCustomerInfo } from '../utils/reservationHelpers';
 
 interface ReservationDialogProps {
   reservation: Reservation | null;
@@ -127,6 +92,36 @@ export function ReservationDialog({
     fontStyle: reservation?.fontStyle || 'gothic' as const,
     deliveryStatus: reservation?.deliveryStatus || 'pending' as const,
   });
+
+  // 予約が変更されたらフォームデータを更新（顧客情報を結合）
+  useEffect(() => {
+    if (reservation) {
+      const customerInfo = getCustomerInfo(reservation);
+      setFormData({
+        date: reservation.date,
+        timeSlot: reservation.timeSlot || '',
+        duration: reservation.duration || 60,
+        parentName: customerInfo.parentName,
+        childName: customerInfo.childName,
+        age: customerInfo.age,
+        ageMonths: customerInfo.ageMonths,
+        customerId: customerInfo.customerId,
+        phoneNumber: customerInfo.phoneNumber,
+        address: customerInfo.address,
+        lineUrl: customerInfo.lineUrl,
+        moldCount: reservation.moldCount || 1,
+        paymentStatus: reservation.paymentStatus || 'unpaid' as const,
+        reservationStatus: reservation.reservationStatus || 'standby' as const,
+        location: reservation.location || (locations.length > 0 ? locations[0] : ''),
+        staffInCharge: reservation.staffInCharge || '',
+        note: reservation.note || '',
+        engravingName: reservation.engravingName || '',
+        engravingDate: reservation.engravingDate || '',
+        fontStyle: reservation.fontStyle || 'gothic' as const,
+        deliveryStatus: reservation.deliveryStatus || 'pending' as const,
+      });
+    }
+  }, [reservation, locations]);
 
   // 拠点が更新されたらフォームデータも更新
   useEffect(() => {

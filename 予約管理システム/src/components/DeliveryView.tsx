@@ -1,22 +1,7 @@
 import { useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle, Clock, Package, Search, X } from 'lucide-react';
-
-interface Reservation {
-  id: string;
-  date: string;
-  timeSlot: string;
-  parentName: string;
-  childName: string;
-  customerId: string;
-  location: string;
-  reservationStatus?: 'standby' | 'confirmed';
-  engravingName?: string;
-  engravingDate?: string;
-  fontStyle?: 'mincho' | 'gothic' | 'cursive';
-  deliveryStatus?: 'pending' | 'shipped' | 'completed';
-  scheduledDeliveryDate?: string;
-  createdAt: string;
-}
+import { Reservation } from '../types';
+import { getCustomerInfo } from '../utils/reservationHelpers';
 
 interface DeliveryViewProps {
   reservations: Reservation[];
@@ -55,7 +40,7 @@ function calculateDeliveryDates(moldingDate: string) {
   };
 }
 
-// 納期アラート判定
+// 納期アラート判��
 function getDeliveryAlert(moldingDate: string, status?: string, scheduledDeliveryDate?: string) {
   if (status === 'completed') return null;
   
@@ -106,11 +91,12 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
       // 仮予約は除外
       if (r.reservationStatus === 'standby') return false;
       
+      const customerInfo = getCustomerInfo(r);
       const matchesSearch = 
         searchQuery === '' ||
-        r.parentName.includes(searchQuery) ||
-        r.childName.includes(searchQuery) ||
-        r.customerId.includes(searchQuery) ||
+        customerInfo.parentName.includes(searchQuery) ||
+        customerInfo.childName.includes(searchQuery) ||
+        customerInfo.customerId.includes(searchQuery) ||
         r.location.includes(searchQuery);
       
       const matchesStatus = 
@@ -193,7 +179,7 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="親名・子名・顧客番号・拠点で検索"
+              placeholder="親名・子名・顧客番号・拠点で���索"
               className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
             {searchQuery && (
@@ -277,13 +263,13 @@ export function DeliveryView({ reservations, onUpdateDeliveryStatus }: DeliveryV
                       
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
-                          <span className="text-gray-500">親名:</span> <span className="text-gray-900">{reservation.parentName}</span>
+                          <span className="text-gray-500">親名:</span> <span className="text-gray-900">{getCustomerInfo(reservation).parentName}</span>
                         </div>
                         <div>
-                          <span className="text-gray-500">子名:</span> <span className="text-gray-900">{reservation.childName}</span>
+                          <span className="text-gray-500">子名:</span> <span className="text-gray-900">{getCustomerInfo(reservation).childName}</span>
                         </div>
                         <div>
-                          <span className="text-gray-500">顧客番号:</span> <span className="text-gray-900">{reservation.customerId}</span>
+                          <span className="text-gray-500">顧客番号:</span> <span className="text-gray-900">{getCustomerInfo(reservation).customerId}</span>
                         </div>
                         <div>
                           <span className="text-gray-500">拠点:</span> <span className="text-gray-900">{reservation.location}</span>

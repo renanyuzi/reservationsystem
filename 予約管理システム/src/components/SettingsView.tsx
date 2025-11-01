@@ -14,7 +14,7 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ currentUser, onUserUpdate }: SettingsViewProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'locations' | 'staff'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'locations' | 'staff' | 'migration'>('profile');
 
   // プロフィール
   const [name, setName] = useState(currentUser.name);
@@ -33,6 +33,10 @@ export function SettingsView({ currentUser, onUserUpdate }: SettingsViewProps) {
   const [staffList, setStaffList] = useState<string[]>([]);
   const [newStaff, setNewStaff] = useState('');
   const [staffLoading, setStaffLoading] = useState(false);
+
+  // マイグレーション
+  const [migrationLoading, setMigrationLoading] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<any>(null);
 
   useEffect(() => {
     loadLocations();
@@ -164,6 +168,25 @@ export function SettingsView({ currentUser, onUserUpdate }: SettingsViewProps) {
     }
   };
 
+  const handleMigration = async () => {
+    if (!confirm('予約データから顧客マスターへのマイグレーションを実行しますか？\n\nこの操作により、予約に含まれる個人情報が顧客マスターに統合され、予約データから削除されます。')) {
+      return;
+    }
+
+    setMigrationLoading(true);
+    setMigrationResult(null);
+    try {
+      const result = await api.migrateReservationsToCustomers();
+      setMigrationResult(result);
+      alert('マイグレーションが完了しました');
+    } catch (err) {
+      console.error('マイグレーションエラー:', err);
+      alert('マイグレーションに失敗しました');
+    } finally {
+      setMigrationLoading(false);
+    }
+  };
+
   return (
     <div className="h-full overflow-auto">
       <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -205,6 +228,17 @@ export function SettingsView({ currentUser, onUserUpdate }: SettingsViewProps) {
                   >
                     <Users className="w-5 h-5" />
                     <span>スタッフ管理</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('migration')}
+                    className={`flex-1 px-6 py-4 flex items-center justify-center gap-2 transition-colors ${
+                      activeTab === 'migration'
+                        ? 'border-b-2 border-indigo-600 text-indigo-600'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Save className="w-5 h-5" />
+                    <span>データ移行</span>
                   </button>
                 </>
               )}
@@ -398,6 +432,72 @@ export function SettingsView({ currentUser, onUserUpdate }: SettingsViewProps) {
 
                 {staffList.length === 0 && (
                   <p className="text-gray-500 text-center py-8">スタッフが登録されていません</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'migration' && currentUser.role === 'admin' && (
+              <div className="space-y-6">
+                <h2 className="text-gray-900">データ移行</h2>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h3 className="text-yellow-900 mb-2">⚠️ 重要な変更</h3>
+                  <p className="text-yellow-800 text-sm mb-2">
+                    このシステムは、予約データと顧客データの一元化を実現するため、データ構造を変更しました。
+                  </p>
+                  <ul className="list-disc list-inside text-yellow-800 text-sm space-y-1">
+                    <li>個人情報（氏名、連絡先など）は顧客マスターに統合されます</li>
+                    <li>予約レコードは顧客IDを参照するだけになります</li>
+                    <li>データの重複がなくなり、整合性が保たれます</li>
+                  </ul>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="text-blue-900 mb-2">📋 マイグレーション手順</h3>
+                  <ol className="list-decimal list-inside text-blue-800 text-sm space-y-1">
+                    <li>既存の予約データから個人情報を抽出します</li>
+                    <li>顧客マスターに自動的に統合します</li>
+                    <li>予約データから個人情報フィールドを削除します</li>
+                    <li>予約と顧客を顧客IDで紐付けます</li>
+                  </ol>
+                </div>
+
+                <button
+                  onClick={handleMigration}
+                  disabled={migrationLoading}
+                  className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {migrationLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>マイグレーション実行中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      <span>データ移行を実行</span>
+                    </>
+                  )}
+                </button>
+
+                {migrationResult && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 className="text-green-900 mb-2">✅ マイグレーション完了</h3>
+                    <ul className="text-green-800 text-sm space-y-1">
+                      <li>作成された顧客: {migrationResult.migratedCustomers}件</li>
+                      <li>更新された予約: {migrationResult.updatedReservations}件</li>
+                      {migrationResult.errors && migrationResult.errors.length > 0 && (
+                        <li className="text-red-600">
+                          エラー: {migrationResult.errors.length}件
+                          <ul className="list-disc list-inside ml-4 mt-1">
+                            {migrationResult.errors.map((error: string, idx: number) => (
+                              <li key={idx}>{error}</li>
+                            ))}
+                          </ul>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}

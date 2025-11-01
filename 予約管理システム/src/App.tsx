@@ -9,6 +9,7 @@ import { SettingsView } from './components/SettingsView';
 import { DeliveryView } from './components/DeliveryView';
 import { DashboardView } from './components/DashboardView';
 import { api } from './utils/api';
+import { Reservation } from './types';
 import { Calendar, BarChart3, TrendingUp, Users, Settings, LogOut, Loader2, UserCircle, Package, LayoutDashboard } from 'lucide-react';
 import { Toaster } from './components/ui/sonner';
 
@@ -16,33 +17,6 @@ interface User {
   name: string;
   staffId: string;
   role: 'admin' | 'staff';
-}
-
-interface Reservation {
-  id: string;
-  date: string;
-  timeSlot: string;
-  duration: number;
-  parentName: string;
-  childName: string;
-  age: number;
-  ageMonths?: number;
-  customerId: string;
-  phoneNumber?: string;
-  address?: string;
-  lineUrl?: string;
-  moldCount: number;
-  paymentStatus: 'paid' | 'unpaid' | 'pending';
-  reservationStatus: 'standby' | 'confirmed';
-  location: string;
-  staffInCharge: string;
-  note: string;
-  engravingName?: string;
-  engravingDate?: string;
-  fontStyle?: 'mincho' | 'gothic' | 'cursive';
-  deliveryStatus?: 'pending' | 'shipped' | 'completed';
-  createdBy: string;
-  createdAt: string;
 }
 
 type View = 'dashboard' | 'calendar' | 'statistics' | 'incentive' | 'staff-management' | 'customer-management' | 'settings' | 'delivery';
@@ -273,11 +247,13 @@ export default function App() {
             {currentView === 'dashboard' && (
               <DashboardView 
                 role={currentUser.role} 
-                userName={currentUser.name} 
+                userName={currentUser.name}
+                reservations={reservations}
                 onNavigate={(view, data) => {
                   setCurrentView(view as View);
                   // データがある場合は追加の処理を実装可能
                 }}
+                onReservationChange={handleReservationChange}
               />
             )}
 

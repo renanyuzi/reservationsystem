@@ -207,11 +207,24 @@ app.put('/make-server-6f5ce90a/profile', async (c) => {
   }
 });
 
-// 予約一覧取得
+// 予約一覧取得（顧客情報を結合）
 app.get('/make-server-6f5ce90a/reservations', async (c) => {
   try {
     const reservationsData = await kv.getByPrefix('reservations:');
-    const reservations = reservationsData;
+    
+    // 各予約に顧客情報を結合
+    const reservations = await Promise.all(
+      reservationsData.map(async (reservation) => {
+        if (reservation.customerId) {
+          const customer = await kv.get(`customers:${reservation.customerId}`);
+          return {
+            ...reservation,
+            customer: customer || null
+          };
+        }
+        return reservation;
+      })
+    );
     
     return c.json({ success: true, reservations });
   } catch (error) {
@@ -226,9 +239,59 @@ app.post('/make-server-6f5ce90a/reservations', async (c) => {
     const data = await c.req.json();
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // 顧客情報の処理
+    let customerId = data.customerId;
+    
+    // 顧客IDがない場合は生成
+    if (!customerId || customerId.trim() === '') {
+      customerId = `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    }
+    
+    // 顧客マスターの作成または更新（個人情報が渡された場合）
+    if (data.parentName || data.childName) {
+      const existingCustomer = await kv.get(`customers:${customerId}`);
+      
+      const customerData = {
+        customerId,
+        parentName: data.parentName || existingCustomer?.parentName || '',
+        childName: data.childName || existingCustomer?.childName || '',
+        age: data.age !== undefined ? data.age : existingCustomer?.age || 0,
+        ageMonths: data.ageMonths !== undefined ? data.ageMonths : existingCustomer?.ageMonths || 0,
+        phoneNumber: data.phoneNumber || existingCustomer?.phoneNumber || '',
+        address: data.address || existingCustomer?.address || '',
+        lineUrl: data.lineUrl || existingCustomer?.lineUrl || '',
+        note: data.note || existingCustomer?.note || '',
+        paymentStatus: data.paymentStatus || existingCustomer?.paymentStatus || 'unpaid',
+        reservationStatus: data.reservationStatus || existingCustomer?.reservationStatus || 'none',
+        createdAt: existingCustomer?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      await kv.set(`customers:${customerId}`, customerData);
+    }
+    
+    // 予約データの保存（個人情報は含めない）
     const reservation = {
       id,
-      ...data,
+      date: data.date,
+      timeSlot: data.timeSlot,
+      duration: data.duration,
+      customerId,
+      moldCount: data.moldCount,
+      paymentStatus: data.paymentStatus || 'unpaid',
+      reservationStatus: data.reservationStatus || 'standby',
+      location: data.location,
+      staffInCharge: data.staffInCharge,
+      note: data.reservationNote || data.note || '',
+      engravingName: data.engravingName,
+      engravingDate: data.engravingDate,
+      fontStyle: data.fontStyle,
+      deliveryStatus: data.deliveryStatus,
+      deliveryMethod: data.deliveryMethod,
+      shippingAddress: data.shippingAddress,
+      scheduledDeliveryDate: data.scheduledDeliveryDate,
+      actualDeliveryDate: data.actualDeliveryDate,
+      createdBy: data.createdBy,
       createdAt: new Date().toISOString()
     };
     
@@ -245,7 +308,14 @@ app.post('/make-server-6f5ce90a/reservations', async (c) => {
       await kv.set(incentiveKey, existingIncentive);
     }
     
-    return c.json({ success: true, reservation });
+    // 顧客情報を結合して返す
+    const customer = await kv.get(`customers:${customerId}`);
+    const reservationWithCustomer = {
+      ...reservation,
+      customer
+    };
+    
+    return c.json({ success: true, reservation: reservationWithCustomer });
   } catch (error) {
     console.log(`Error creating reservation: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
@@ -261,6 +331,30 @@ app.put('/make-server-6f5ce90a/reservations/:id', async (c) => {
     const existing = await kv.get(`reservations:${id}`);
     if (!existing) {
       return c.json({ success: false, error: '予約が見つかりません' }, 404);
+    }
+    
+    // 顧客マスターの更新（個人情報が渡された場合）
+    const customerId = data.customerId || existing.customerId;
+    if (customerId && (data.parentName || data.childName || data.phoneNumber || data.address)) {
+      const existingCustomer = await kv.get(`customers:${customerId}`);
+      
+      if (existingCustomer) {
+        const updatedCustomer = {
+          ...existingCustomer,
+          parentName: data.parentName !== undefined ? data.parentName : existingCustomer.parentName,
+          childName: data.childName !== undefined ? data.childName : existingCustomer.childName,
+          age: data.age !== undefined ? data.age : existingCustomer.age,
+          ageMonths: data.ageMonths !== undefined ? data.ageMonths : existingCustomer.ageMonths,
+          phoneNumber: data.phoneNumber !== undefined ? data.phoneNumber : existingCustomer.phoneNumber,
+          address: data.address !== undefined ? data.address : existingCustomer.address,
+          lineUrl: data.lineUrl !== undefined ? data.lineUrl : existingCustomer.lineUrl,
+          paymentStatus: data.paymentStatus !== undefined ? data.paymentStatus : existingCustomer.paymentStatus,
+          reservationStatus: data.reservationStatus !== undefined ? data.reservationStatus : existingCustomer.reservationStatus,
+          updatedAt: new Date().toISOString()
+        };
+        
+        await kv.set(`customers:${customerId}`, updatedCustomer);
+      }
     }
     
     // インセンティブの再計算（担当者や日付が変更された場合）
@@ -298,15 +392,41 @@ app.put('/make-server-6f5ce90a/reservations/:id', async (c) => {
       }
     }
     
+    // 予約データの更新（個人情報フィールドを除外）
     const reservation = {
       ...existing,
-      ...data,
-      id
+      date: data.date !== undefined ? data.date : existing.date,
+      timeSlot: data.timeSlot !== undefined ? data.timeSlot : existing.timeSlot,
+      duration: data.duration !== undefined ? data.duration : existing.duration,
+      customerId: customerId,
+      moldCount: data.moldCount !== undefined ? data.moldCount : existing.moldCount,
+      paymentStatus: data.paymentStatus !== undefined ? data.paymentStatus : existing.paymentStatus,
+      reservationStatus: data.reservationStatus !== undefined ? data.reservationStatus : existing.reservationStatus,
+      location: data.location !== undefined ? data.location : existing.location,
+      staffInCharge: data.staffInCharge !== undefined ? data.staffInCharge : existing.staffInCharge,
+      note: data.note !== undefined ? data.note : existing.note,
+      engravingName: data.engravingName !== undefined ? data.engravingName : existing.engravingName,
+      engravingDate: data.engravingDate !== undefined ? data.engravingDate : existing.engravingDate,
+      fontStyle: data.fontStyle !== undefined ? data.fontStyle : existing.fontStyle,
+      deliveryStatus: data.deliveryStatus !== undefined ? data.deliveryStatus : existing.deliveryStatus,
+      deliveryMethod: data.deliveryMethod !== undefined ? data.deliveryMethod : existing.deliveryMethod,
+      shippingAddress: data.shippingAddress !== undefined ? data.shippingAddress : existing.shippingAddress,
+      scheduledDeliveryDate: data.scheduledDeliveryDate !== undefined ? data.scheduledDeliveryDate : existing.scheduledDeliveryDate,
+      actualDeliveryDate: data.actualDeliveryDate !== undefined ? data.actualDeliveryDate : existing.actualDeliveryDate,
+      id,
+      updatedAt: new Date().toISOString()
     };
     
     await kv.set(`reservations:${id}`, reservation);
     
-    return c.json({ success: true, reservation });
+    // 顧客情報を結合して返す
+    const customer = await kv.get(`customers:${customerId}`);
+    const reservationWithCustomer = {
+      ...reservation,
+      customer
+    };
+    
+    return c.json({ success: true, reservation: reservationWithCustomer });
   } catch (error) {
     console.log(`Error updating reservation: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
@@ -534,6 +654,89 @@ app.delete('/make-server-6f5ce90a/customers/:id', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.log(`Error deleting customer: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// データマイグレーション: 予約から顧客マスターを生成
+app.post('/make-server-6f5ce90a/migrate/reservations-to-customers', async (c) => {
+  try {
+    const reservationsData = await kv.getByPrefix('reservations:');
+    
+    let migratedCount = 0;
+    let updatedReservations = 0;
+    const errors: string[] = [];
+    
+    for (const reservation of reservationsData) {
+      try {
+        // 個人情報が含まれている旧形式の予約をチェック
+        if (reservation.parentName || reservation.childName) {
+          const customerId = reservation.customerId || `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+          
+          // 顧客マスターが存在しない場合のみ作成
+          const existingCustomer = await kv.get(`customers:${customerId}`);
+          if (!existingCustomer) {
+            const customerData = {
+              customerId,
+              parentName: reservation.parentName || '',
+              childName: reservation.childName || '',
+              age: reservation.age || 0,
+              ageMonths: reservation.ageMonths || 0,
+              phoneNumber: reservation.phoneNumber || '',
+              address: reservation.address || '',
+              lineUrl: reservation.lineUrl || '',
+              note: reservation.customerNote || '',
+              paymentStatus: reservation.paymentStatus || 'unpaid',
+              reservationStatus: reservation.reservationStatus || 'none',
+              createdAt: reservation.createdAt || new Date().toISOString()
+            };
+            
+            await kv.set(`customers:${customerId}`, customerData);
+            migratedCount++;
+          }
+          
+          // 予約から個人情報フィールドを削除
+          const cleanedReservation = {
+            id: reservation.id,
+            date: reservation.date,
+            timeSlot: reservation.timeSlot,
+            duration: reservation.duration,
+            customerId,
+            moldCount: reservation.moldCount,
+            paymentStatus: reservation.paymentStatus,
+            reservationStatus: reservation.reservationStatus,
+            location: reservation.location,
+            staffInCharge: reservation.staffInCharge,
+            note: reservation.note,
+            engravingName: reservation.engravingName,
+            engravingDate: reservation.engravingDate,
+            fontStyle: reservation.fontStyle,
+            deliveryStatus: reservation.deliveryStatus,
+            deliveryMethod: reservation.deliveryMethod,
+            shippingAddress: reservation.shippingAddress,
+            scheduledDeliveryDate: reservation.scheduledDeliveryDate,
+            actualDeliveryDate: reservation.actualDeliveryDate,
+            createdBy: reservation.createdBy,
+            createdAt: reservation.createdAt,
+            updatedAt: new Date().toISOString()
+          };
+          
+          await kv.set(`reservations:${reservation.id}`, cleanedReservation);
+          updatedReservations++;
+        }
+      } catch (error) {
+        errors.push(`予約 ${reservation.id} の処理中にエラー: ${error}`);
+      }
+    }
+    
+    return c.json({
+      success: true,
+      migratedCustomers: migratedCount,
+      updatedReservations,
+      errors
+    });
+  } catch (error) {
+    console.log(`Error during migration: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });

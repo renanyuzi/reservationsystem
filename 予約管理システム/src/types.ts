@@ -5,14 +5,7 @@ export interface Reservation {
   date: string;
   timeSlot: string;
   duration: number;
-  parentName: string;
-  childName: string;
-  age: number;
-  ageMonths?: number;
   customerId: string;
-  phoneNumber?: string;
-  address?: string;
-  lineUrl?: string;
   moldCount: number;
   paymentStatus: 'paid' | 'unpaid' | 'pending';
   reservationStatus: 'standby' | 'confirmed';
@@ -27,8 +20,21 @@ export interface Reservation {
   shippingAddress?: string;
   scheduledDeliveryDate?: string;
   actualDeliveryDate?: string;
+  createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+  
+  // 顧客情報（結合時のみ）
+  customer?: Customer;
+  
+  // 後方互換性のため保持（deprecated - 将来削除予定）
+  parentName?: string;
+  childName?: string;
+  age?: number;
+  ageMonths?: number;
+  phoneNumber?: string;
+  address?: string;
+  lineUrl?: string;
 }
 
 export interface Customer {

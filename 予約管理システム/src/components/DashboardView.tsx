@@ -1,41 +1,21 @@
-import { useState, useEffect } from 'react';
-import { Loader2, Clock, CheckCircle, Package } from 'lucide-react';
+import { useState } from 'react';
+import { Clock, CheckCircle, Package } from 'lucide-react';
 import { api } from '../utils/api';
 import { Reservation, Task } from '../types';
+import { ReservationDetailDialog } from './ReservationDetailDialog';
+import { getCustomerInfo } from '../utils/reservationHelpers';
 
 interface DashboardViewProps {
   role: 'admin' | 'staff';
   userName: string;
+  reservations: Reservation[];
   onNavigate?: (view: string, data?: any) => void;
+  onReservationChange?: () => void;
 }
 
-export function DashboardView({ role, userName, onNavigate }: DashboardViewProps) {
-  const [loading, setLoading] = useState(true);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const result = await api.getReservations();
-      setReservations(result.reservations || []);
-    } catch (err) {
-      console.error('データ取得エラー:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
+export function DashboardView({ role, userName, reservations, onNavigate, onReservationChange }: DashboardViewProps) {
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
   const todayReservations = reservations.filter(r => r.date === today);
@@ -79,26 +59,36 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
               <p className="text-gray-500 text-center py-8">本日の予約はありません</p>
             ) : (
               <div className="space-y-3">
-                {todayReservations.map((res) => (
-                  <div key={res.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200">
-                    <div>
-                      <p className="text-gray-900">{res.timeSlot || '時間未設定'} - {res.parentName}様</p>
-                      <p className="text-sm text-gray-600">担当: {res.staffInCharge} / 拠点: {res.location}</p>
+                {todayReservations.map((res) => {
+                  const customerInfo = getCustomerInfo(res);
+                  return (
+                    <div 
+                      key={res.id} 
+                      onClick={() => {
+                        setSelectedReservation(res);
+                        setShowDetailDialog(true);
+                      }}
+                      className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 cursor-pointer hover:shadow-md transition-shadow"
+                    >
+                      <div>
+                        <p className="text-gray-900">{res.timeSlot || '時間未設定'} - {customerInfo.parentName}様</p>
+                        <p className="text-sm text-gray-600">担当: {res.staffInCharge} / 拠点: {res.location}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className={`px-3 py-1 rounded-lg text-sm ${
+                          res.reservationStatus === 'confirmed' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'
+                        }`}>
+                          {res.reservationStatus === 'confirmed' ? '確定' : '仮予約'}
+                        </span>
+                        <span className={`px-3 py-1 rounded-lg text-sm ${
+                          res.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {res.paymentStatus === 'paid' ? '支払済' : '未決済'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <span className={`px-3 py-1 rounded-lg text-sm ${
-                        res.reservationStatus === 'confirmed' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'
-                      }`}>
-                        {res.reservationStatus === 'confirmed' ? '確定' : '仮予約'}
-                      </span>
-                      <span className={`px-3 py-1 rounded-lg text-sm ${
-                        res.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {res.paymentStatus === 'paid' ? '支払済' : '未決済'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -116,26 +106,32 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
               ) : (
                 <>
                   <div className="space-y-3 max-h-96 overflow-auto">
-                    {actionItems.standbyReservations.slice(0, 5).map((res) => (
-                      <div 
-                        key={res.id} 
-                        onClick={() => onNavigate?.('customers', { customerId: res.customerId })}
-                        className="p-4 bg-orange-50 rounded-lg border border-orange-200 cursor-pointer hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <p className="text-gray-900 font-medium">{res.parentName}様</p>
-                            <p className="text-sm text-gray-600 mt-1">
-                              予約日: {res.date} {res.timeSlot || '時間未設定'}
-                            </p>
-                            <p className="text-xs text-gray-500">拠点: {res.location} / 担当: {res.staffInCharge}</p>
+                    {actionItems.standbyReservations.slice(0, 5).map((res) => {
+                      const customerInfo = getCustomerInfo(res);
+                      return (
+                        <div 
+                          key={res.id} 
+                          onClick={() => {
+                            setSelectedReservation(res);
+                            setShowDetailDialog(true);
+                          }}
+                          className="p-4 bg-orange-50 rounded-lg border border-orange-200 cursor-pointer hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="text-gray-900 font-medium">{customerInfo.parentName}様</p>
+                              <p className="text-sm text-gray-600 mt-1">
+                                予約日: {res.date} {res.timeSlot || '時間未設定'}
+                              </p>
+                              <p className="text-xs text-gray-500">拠点: {res.location} / 担当: {res.staffInCharge}</p>
+                            </div>
+                            <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs">
+                              仮予約
+                            </span>
                           </div>
-                          <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs">
-                            仮予約
-                          </span>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   {actionItems.standbyReservations.length > 5 && (
                     <button
@@ -161,6 +157,7 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                 <>
                   <div className="space-y-3 max-h-96 overflow-auto">
                     {actionItems.upcomingDeliveries.map((res) => {
+                      const customerInfo = getCustomerInfo(res);
                       const deliveryDate = new Date(res.scheduledDeliveryDate!);
                       const today = new Date();
                       today.setHours(0, 0, 0, 0);
@@ -171,7 +168,10 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                       return (
                         <div 
                           key={res.id} 
-                          onClick={() => onNavigate?.('customers', { customerId: res.customerId })}
+                          onClick={() => {
+                            setSelectedReservation(res);
+                            setShowDetailDialog(true);
+                          }}
                           className={`p-4 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${
                             isPast ? 'bg-red-50 border-red-200' :
                             isUrgent ? 'bg-yellow-50 border-yellow-200' :
@@ -180,7 +180,7 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <p className="text-gray-900 font-medium">{res.parentName}様</p>
+                              <p className="text-gray-900 font-medium">{customerInfo.parentName}様</p>
                               <p className="text-sm text-gray-600 mt-1">
                                 予定納期: {res.scheduledDeliveryDate}
                               </p>
@@ -191,7 +191,7 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                             <span className={`px-2 py-1 rounded text-xs ${
                               res.deliveryStatus === 'shipped' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
                             }`}>
-                              {res.deliveryStatus === 'shipped' ? '発送済' : '製作中'}
+                              {res.deliveryStatus === 'shipped' ? '受け取り待ち' : '製作中'}
                             </span>
                           </div>
                         </div>
@@ -209,6 +209,42 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
             </div>
           </div>
         </div>
+        
+        {/* 予約詳細ダイアログ */}
+        {showDetailDialog && selectedReservation && (
+          <ReservationDetailDialog
+            reservation={selectedReservation}
+            onClose={() => {
+              setShowDetailDialog(false);
+              setSelectedReservation(null);
+            }}
+            onEdit={(reservation) => {
+              // 編集機能は実装されていないため、ダイアログを閉じるのみ
+              setShowDetailDialog(false);
+              setSelectedReservation(null);
+            }}
+            onDelete={async () => {
+              try {
+                await api.deleteReservation(selectedReservation.id);
+                setShowDetailDialog(false);
+                setSelectedReservation(null);
+                loadData(); // データを再読み込み
+              } catch (error) {
+                console.error('削除エラー:', error);
+                alert('予約の削除に失敗しました');
+              }
+            }}
+            onUpdatePaymentStatus={async (id, status) => {
+              try {
+                await api.updateReservation(id, { paymentStatus: status });
+                loadData(); // データを再読み込み
+              } catch (error) {
+                console.error('決済ステータス更新エラー:', error);
+                alert('決済ステータスの更新に失敗しました');
+              }
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -225,28 +261,36 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
           <p className="text-gray-600">{new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</p>
         </div>
 
-        {/* 本日の担当予約 */}
+        {/* 本日の予約 */}
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <h2 className="text-gray-900 mb-4 flex items-center gap-2">
             <Clock className="w-5 h-5 text-indigo-600" />
-            本日の担当予約
+            本日の予約（{todayReservations.length}件）
           </h2>
-          {todayReservations.filter(r => r.staffInCharge === userName).length === 0 ? (
-            <p className="text-gray-500 text-center py-8">本日の担当予約はありません</p>
+          {todayReservations.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">本日の予約はありません</p>
           ) : (
             <div className="space-y-3">
-              {todayReservations.filter(r => r.staffInCharge === userName).map((res) => (
+              {todayReservations.map((res) => (
                 <div 
                   key={res.id} 
-                  onClick={() => onNavigate?.('customers', { customerId: res.customerId })}
+                  onClick={() => {
+                    setSelectedReservation(res);
+                    setShowDetailDialog(true);
+                  }}
                   className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 cursor-pointer hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-900">{res.timeSlot || '時間未設定'} - {res.parentName}様</p>
-                      <p className="text-sm text-gray-600">拠点: {res.location}</p>
+                      <p className="text-sm text-gray-600">担当: {res.staffInCharge} / 拠点: {res.location}</p>
                     </div>
                     <div className="flex gap-2">
+                      <span className={`px-3 py-1 rounded-lg text-sm ${
+                        res.reservationStatus === 'confirmed' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {res.reservationStatus === 'confirmed' ? '確定' : '仮予約'}
+                      </span>
                       <span className={`px-3 py-1 rounded-lg text-sm ${
                         res.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                       }`}>
@@ -279,7 +323,10 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                     .map((res) => (
                       <div 
                         key={res.id} 
-                        onClick={() => onNavigate?.('customers', { customerId: res.customerId })}
+                        onClick={() => {
+                          setSelectedReservation(res);
+                          setShowDetailDialog(true);
+                        }}
                         className="p-4 bg-orange-50 rounded-lg border border-orange-200 cursor-pointer hover:shadow-md transition-shadow"
                       >
                         <div className="flex items-start justify-between">
@@ -333,7 +380,10 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                       return (
                         <div 
                           key={res.id} 
-                          onClick={() => onNavigate?.('customers', { customerId: res.customerId })}
+                          onClick={() => {
+                            setSelectedReservation(res);
+                            setShowDetailDialog(true);
+                          }}
                           className={`p-4 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${
                             isPast ? 'bg-red-50 border-red-200' :
                             isUrgent ? 'bg-yellow-50 border-yellow-200' :
@@ -347,13 +397,13 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
                                 予定納期: {res.scheduledDeliveryDate}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {isPast ? '納期超過' : isUrgent ? `あと${daysUntil}日` : `${daysUntil}日後`}
+                                {isPast ? '納期超過' : isUrgent ? `��と${daysUntil}日` : `${daysUntil}日後`}
                               </p>
                             </div>
                             <span className={`px-2 py-1 rounded text-xs ${
                               res.deliveryStatus === 'shipped' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
                             }`}>
-                              {res.deliveryStatus === 'shipped' ? '発送済' : '製作中'}
+                              {res.deliveryStatus === 'shipped' ? '受け取り待ち' : '製作中'}
                             </span>
                           </div>
                         </div>
@@ -371,6 +421,42 @@ export function DashboardView({ role, userName, onNavigate }: DashboardViewProps
           </div>
         </div>
       </div>
+      
+      {/* 予約詳細ダイアログ */}
+      {showDetailDialog && selectedReservation && (
+        <ReservationDetailDialog
+          reservation={selectedReservation}
+          onClose={() => {
+            setShowDetailDialog(false);
+            setSelectedReservation(null);
+          }}
+          onEdit={(reservation) => {
+            // 編集機能は実装されていないため、ダイアログを閉じるのみ
+            setShowDetailDialog(false);
+            setSelectedReservation(null);
+          }}
+          onDelete={async () => {
+            try {
+              await api.deleteReservation(selectedReservation.id);
+              setShowDetailDialog(false);
+              setSelectedReservation(null);
+              onReservationChange?.(); // 親に通知してデータを再読み込み
+            } catch (error) {
+              console.error('削除エラー:', error);
+              alert('予約の削除に失敗しました');
+            }
+          }}
+          onUpdatePaymentStatus={async (id, status) => {
+            try {
+              await api.updateReservation(id, { paymentStatus: status });
+              onReservationChange?.(); // 親に通知してデータを再読み込み
+            } catch (error) {
+              console.error('決済ステータス更新エラー:', error);
+              alert('決済ステータスの更新に失敗しました');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
